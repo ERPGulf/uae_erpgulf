@@ -261,7 +261,9 @@ def build_uae_invoice_json(invoice_number):
             "sales_order_id": "SO-001/23"
         },
 
+
         "billing_reference": {
+            
             "invoice_document_reference": {
                 "id": str(invoice_number),
                 "issue_date": str(sales_invoice_doc.posting_date)
