@@ -756,10 +756,11 @@ def build_uae_invoice_json(invoice_number):
     }
 
     return invoice
+
 def save_and_attach_invoice_json(invoice_number):
     """
-    Builds UAE invoice JSON, saves it as a file, and attaches it to the Sales Invoice.
-    If the file already exists, it will be overwritten.
+    Builds UAE invoice JSON, deletes older JSON attachments,
+    saves ONLY the latest one, and attaches it to the Sales Invoice.
     """
 
     invoice_json = build_uae_invoice_json(invoice_number)
@@ -767,34 +768,30 @@ def save_and_attach_invoice_json(invoice_number):
 
     file_name = f"{invoice_number}_uae_invoice.json"
 
-    # 🔎 Check if file already exists
-    existing_file = frappe.get_all(
+    # 🔥 Delete all previous attachments with same name
+    old_files = frappe.get_all(
         "File",
         filters={
             "attached_to_doctype": "Sales Invoice",
             "attached_to_name": invoice_number,
             "file_name": file_name,
         },
-        limit=1,
+        pluck="name",
     )
 
-    if existing_file:
-        # 🔁 Overwrite existing file
-        file_doc = frappe.get_doc("File", existing_file[0].name)
-        file_doc.content = json_content
-        file_doc.save(ignore_permissions=True)
+    for file_name_doc in old_files:
+        frappe.delete_doc("File", file_name_doc, force=1)
 
-    else:
-        # ➕ Create new file
-        file_doc = frappe.get_doc({
-            "doctype": "File",
-            "file_name": file_name,
-            "is_private": 1,
-            "content": json_content,
-            "attached_to_doctype": "Sales Invoice",
-            "attached_to_name": invoice_number,
-        })
-        file_doc.insert(ignore_permissions=True)
+    # ➕ Create fresh attachment
+    file_doc = frappe.get_doc({
+        "doctype": "File",
+        "file_name": file_name,
+        "is_private": 1,
+        "content": json_content,
+        "attached_to_doctype": "Sales Invoice",
+        "attached_to_name": invoice_number,
+    })
+    file_doc.insert(ignore_permissions=True)
 
     frappe.db.commit()
 
@@ -802,6 +799,7 @@ def save_and_attach_invoice_json(invoice_number):
         "file_name": file_doc.file_name,
         "file_url": file_doc.file_url,
     }
+
 
 @frappe.whitelist()
 def send_invoice_json(invoice_number):
