@@ -756,36 +756,35 @@ def build_uae_invoice_json(invoice_number):
     }
 
     return invoice
-
+    
 def save_and_attach_invoice_json(invoice_number):
     """
-    Builds UAE invoice JSON, deletes older JSON attachments,
-    saves ONLY the latest one, and attaches it to the Sales Invoice.
+    Builds UAE invoice JSON, deletes ALL earlier XML/JSON attachments,
+    and attaches ONLY the latest file.
     """
 
     invoice_json = build_uae_invoice_json(invoice_number)
     json_content = json.dumps(invoice_json, indent=4, ensure_ascii=False)
 
-    file_name = f"{invoice_number}_uae_invoice.json"
-
-    # 🔥 Delete all previous attachments with same name
+    # 🔥 Fetch ALL attached files
     old_files = frappe.get_all(
         "File",
         filters={
             "attached_to_doctype": "Sales Invoice",
             "attached_to_name": invoice_number,
-            "file_name": file_name,
         },
-        pluck="name",
+        fields=["name", "file_name"],
     )
 
-    for file_name_doc in old_files:
-        frappe.delete_doc("File", file_name_doc, force=1)
+    # 🔥 Delete XML & JSON files only
+    for f in old_files:
+        if f.file_name.lower().endswith((".xml", ".json")):
+            frappe.delete_doc("File", f.name, force=1)
 
-    # ➕ Create fresh attachment
+    # ➕ Attach latest JSON
     file_doc = frappe.get_doc({
         "doctype": "File",
-        "file_name": file_name,
+        "file_name": f"{invoice_number}_uae_invoice.json",
         "is_private": 1,
         "content": json_content,
         "attached_to_doctype": "Sales Invoice",
