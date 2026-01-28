@@ -253,3 +253,11 @@ app_license = "mit"
 doctype_js = {
     "Sales Invoice": "public/js/sales_invoice.js"
 }
+fixtures = [
+    {
+        "dt": "Custom Field",
+        "filters": [
+            ["module", "=", "uae_erpgulf"]
+        ]
+    }
+]
