@@ -560,6 +560,35 @@ def get_payment_means(sales_invoice_doc):
         "payment_means": [payment_means]
     }
 
+def get_invoice_transaction_metadata(doc):
+    code = (doc.custom_invoice_transaction_type_code or "").strip()
+
+    # Blank = all false
+    if not code:
+        return {
+            "is_ftz": False,
+            "is_deemed": False,
+            "is_margin": False,
+            "is_summary": False,
+            "is_continuous": False,
+            "is_dab": False,
+            "is_ecommerce": False,
+            "is_export": False,
+        }
+
+    bit_code = code.split(":")[0].strip()
+
+    return {
+        "is_ftz": bit_code[0] == "1",
+        "is_deemed": bit_code[1] == "1",
+        "is_margin": bit_code[2] == "1",
+        "is_summary": bit_code[3] == "1",
+        "is_continuous": bit_code[4] == "1",
+        "is_dab": bit_code[5] == "1",
+        "is_ecommerce": bit_code[6] == "1",
+        "is_export": bit_code[7] == "1",
+    }
+
 
 def build_uae_invoice_json(invoice_number):
     sales_invoice_doc = frappe.get_doc("Sales Invoice", invoice_number)
@@ -715,7 +744,8 @@ def build_uae_invoice_json(invoice_number):
                 }
                 }
             ],
-        "invoice_totals": {}
+        "invoice_totals": {},
+        "metadata":get_invoice_transaction_metadata(sales_invoice_doc)
     }
     exchange_rate = get_currency_exchange_rate(sales_invoice_doc)
     if exchange_rate is not None:
@@ -752,7 +782,8 @@ def build_uae_invoice_json(invoice_number):
         "tax_exclusive_amount": r2(total_net - Decimal(sales_invoice_doc.discount_amount or 0)),
         "tax_inclusive_amount": r2(total_net + total_tax),
         "allowance_total_amount": r2(abs(Decimal(sales_invoice_doc.discount_amount or 0))),
-        "payable_amount": r2(total_net + total_tax)
+        "payable_amount": r2(total_net + total_tax),
+        "currency_id": sales_invoice_doc.currency
     }
 
     return invoice
