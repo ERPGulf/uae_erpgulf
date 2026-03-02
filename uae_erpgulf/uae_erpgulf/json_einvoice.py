@@ -396,7 +396,7 @@ def validate_receiving_party_fields(
 def get_item_data(sales_invoice_doc, vat_rate):
     total_net = Decimal(0)
     total_tax = Decimal(0)
-    invoice = {"invoice_line": []}
+    invoice = {"invoice_lines": []}
 
     def r2(val):
         return float(Decimal(val).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
@@ -466,19 +466,21 @@ def get_item_data(sales_invoice_doc, vat_rate):
             "note": "Please check the invoice",
             "invoiced_quantity": str(item.qty),
             "uom": item.uom,
+            "line_extension_amount": get_item_line_extension_amount(item),
             "accounting_cost": item.cost_center,
             "name": item.item_name,
             "description": item.description,
             "commodity_code": commodity_code,
             "hs_code": hs_code,
             "sac_code": sac_code,
-            "vat_category": vat_category,
+            "vat_category": get_vat_category_code(vat_category),
             "vat_percentage": r2(tax_rate),
             "unit_price": r2(item.rate),
             "base_quantity": "1"
+            # "line_extension_amount": get_item_line_extension_amount(item)
         }
 
-        invoice["invoice_line"].append(invoice_line)
+        invoice["invoice_lines"].append(invoice_line)
 
     return invoice, total_net, total_tax
         
@@ -589,6 +591,55 @@ def get_invoice_transaction_metadata(doc):
         "is_export": bit_code[7] == "1",
     }
 
+def get_payment_means(sales_invoice_doc):
+    """Build UAE E-invoicing payment_means array from Sales Invoice payments."""
+
+    payment_means_list = []
+
+    for pay_row in sales_invoice_doc.payments:
+        # 1. Get Mode of Payment document
+        mop = frappe.get_doc("Mode of Payment", pay_row.mode_of_payment)
+
+        # 2. Get custom payment means code (stored in MoP)
+        pm_code = mop.get("custom_payment_means_codes") or ""
+
+        # 3. Get first account under Mode of Payment → Accounts child table
+        if not mop.accounts:
+            continue
+
+        mop_acc = mop.accounts[0]
+
+        # 4. Fetch Account document
+        acc = frappe.get_doc("Account", mop_acc.default_account)
+
+        # -------------------------
+        # UAE JSON construction
+        # -------------------------
+        payment_means_entry = {
+            "payment_means_code": pm_code,
+            "payment_means_code_name": mop.mode_of_payment,
+            "payee_financial_account": {
+                "id": acc.account_number,
+                "id_scheme_id": "IBAN" if acc.account_type == "Bank" else "OTH",
+                "name": acc.account_name,
+                "financial_institution_branch": {
+                    "id": acc.company or ""
+                }
+            }
+        }
+
+        # If card payments → include card details (optional)
+        if pm_code in ["48", "55", "57"]:  # Debit/Credit card
+            payment_means_entry["card_account"] = {
+                "primary_account_number_id": "XXXXXXXXXXXX1234",
+                "network_id": "VISA",
+                "holder_name": sales_invoice_doc.customer
+            }
+
+        payment_means_list.append(payment_means_entry)
+
+    return payment_means_list
+
 
 def build_uae_invoice_json(invoice_number):
     sales_invoice_doc = frappe.get_doc("Sales Invoice", invoice_number)
@@ -633,7 +684,8 @@ def build_uae_invoice_json(invoice_number):
                 "city_address": address_data.city,
                 "additional_street_address": address_data.address_line2,
                 "postal_zone": address_data.pincode,
-                "emirates_code": address_data.emirate,
+                # "emirates_code": address_data.emirate,
+                "emirate_code" : get_uae_emirate_code(address_data.emirate),
                 "additional_address_lines":  address_data.address_line2,
                 "country_code": country_code1 ,
                 "vat_number": customer_doc.tax_id ,
@@ -688,10 +740,10 @@ def build_uae_invoice_json(invoice_number):
         # "accounting_cost":  sales_invoice_doc.cost_center,
         "buyer_reference": get_icv_code(invoice_number),
         "invoice_period": get_invoice_period(sales_invoice_doc),#wrote a function but incode transaction code list need to check
-        "order_reference": {   #OPTIONAL
-            "id": "PO-001/23",
-            "sales_order_id": "SO-001/23"
-        },
+        # "order_reference": {   #OPTIONAL
+        #     "id": "PO-001/23",
+        #     "sales_order_id": "SO-001/23"
+        # },
 
         "document_references": {
             
@@ -713,7 +765,7 @@ def build_uae_invoice_json(invoice_number):
         # }, OPTIONAL ORDER REFERENCES
         "receiving_party":receiving_party,
 
-        "invoice_line": [],
+        "invoice_lines": [],
         "legal_monetary_total": {
                 "line_extension_amount": line_extension_amount,
                 "tax_exclusive_amount": tax_exclusive_amount,
@@ -726,23 +778,7 @@ def build_uae_invoice_json(invoice_number):
                 "currency_id": sales_invoice_doc.currency
             },
         "payment_means": [
-                {
-                "payment_means_code": "55",
-                "payment_means_code_name": "Debit Card",
-                "card_account": {
-                    "primary_account_number_id": "XXXXXXXXXXXX1234",
-                    "network_id": "VISA",
-                    "holder_name": "Card Holder Name"
-                },
-                "payee_financial_account": {
-                    "id": "AE0000000001",
-                    "id_scheme_id": "IBAN",
-                    "name": "current account",
-                    "financial_institution_branch": {
-                    "id": "236000"
-                    }
-                }
-                }
+                get_payment_means(sales_invoice_doc)
             ],
         "invoice_totals": {},
         "metadata":get_invoice_transaction_metadata(sales_invoice_doc)
@@ -774,7 +810,7 @@ def build_uae_invoice_json(invoice_number):
     invoice_lines_data, total_net, total_tax = get_item_data(sales_invoice_doc, vat_rate)
 
     # Assign invoice lines to main invoice
-    invoice["invoice_line"] = invoice_lines_data["invoice_line"]
+    invoice["invoice_lines"] = invoice_lines_data["invoice_lines"]
 
 
     invoice["invoice_totals"] = {
@@ -842,3 +878,76 @@ def send_invoice_json(invoice_number):
         "message": _("Invoice JSON generated and attached successfully"),
         "file_url": result["file_url"]
     }
+def get_uae_emirate_code(emirate_name):
+    """
+    Convert full UAE emirate name to PEPPOL subdivision code.
+    Required values:
+    AUH, DXB, SHJ, AJM, UAQ, RAK, FUJ
+    """
+    if not emirate_name:
+        return None
+
+    mapping = {
+        "abu dhabi": "AUH",
+        "dubai": "DXB",
+        "sharjah": "SHJ",
+        "ajman": "AJM",
+        "umm al quwain": "UAQ",
+        "ras al khaimah": "RAK",
+        "fujairah": "FUJ",
+    }
+
+    return mapping.get(emirate_name.strip().lower())
+def get_item_line_extension_amount(item):
+    """
+    Calculate line extension amount per invoice line.
+    = qty × rate (excluding VAT)
+    """
+    amount = abs(item.qty * item.rate)
+    return str(round(amount, 2))    
+def get_vat_category_code(vat_category_label):
+    """
+    Convert VAT category label to PEPPOL VAT category code.
+    Allowed codes:
+    S, Z, E, AE, O, N
+    """
+
+    if not vat_category_label:
+        return None
+
+    mapping = {
+        "s - standard rated": "S",
+        "standard rated": "S",
+        "s": "S",
+
+        "z - zero rated": "Z",
+        "zero rated": "Z",
+        "z": "Z",
+
+        "e - exempt from tax": "E",
+        "exempt from tax": "E",
+        "e": "E",
+
+        "ae - vat reverse charge": "AE",
+        "vat reverse charge": "AE",
+        "reverse charge": "AE",
+        "ae": "AE",
+
+        "o - not subject to vat": "O",
+        "not subject to vat": "O",
+        "o": "O",
+
+        "n - margin scheme": "N",
+        "margin scheme": "N",
+        "n": "N",
+    }
+
+    code = mapping.get(vat_category_label.strip().lower())
+
+    if not code:
+        frappe.throw(
+            f"Invalid VAT Category: {vat_category_label}. "
+            "Must be one of S, Z, E, AE, O, N."
+        )
+
+    return code    
