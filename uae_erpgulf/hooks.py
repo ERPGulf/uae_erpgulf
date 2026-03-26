@@ -251,7 +251,17 @@ app_license = "mit"
 # ignore_translatable_strings_from = []
 
 doctype_js = {
-    "Sales Invoice": "public/js/sales_invoice.js"
+    "Sales Invoice": "public/js/sales_invoice.js",
+    "Company":"public/js/company.js"
+    
+}
+doctype_list_js = {
+    "Sales Invoice": "public/js/bulk_submit.js"
+}
+doc_events = {
+    "Sales Invoice": {
+        "on_submit": "uae_erpgulf.uae_erpgulf.test.generate_and_send_einvoice"
+    }
 }
 fixtures = [
     {

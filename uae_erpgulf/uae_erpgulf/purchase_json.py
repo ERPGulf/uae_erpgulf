@@ -643,21 +643,23 @@ def get_payment_means(sales_invoice_doc):
 
 
 def build_uae_invoice_json(invoice_number):
-    sales_invoice_doc = frappe.get_doc("Sales Invoice", invoice_number)
+    sales_invoice_doc = frappe.get_doc("Purchase Invoice", invoice_number)
     company_doc = frappe.get_doc("Company", sales_invoice_doc.company)
     if company_doc.custom_uae_einvoice_enabled !=1 :
         frappe.throw(_("UAE E-invoicing not Enabled....pls enable to submit PEPPOL"))
         pass
-    customer_doc = frappe.get_doc("Customer", sales_invoice_doc.customer)
+    customer_doc = frappe.get_doc("Supplier", sales_invoice_doc.supplier)
     address_data = None
 
     if sales_invoice_doc.customer_address:
-        address_data = frappe.get_doc("Address", sales_invoice_doc.customer_address)
+        address_data = frappe.get_doc("Address", sales_invoice_doc.primary_address)
     elif customer_doc.customer_primary_address:
-        address_data = frappe.get_doc("Address", customer_doc.customer_primary_address)
+        address_data = frappe.get_doc(
+                "Address", company_doc.supplier_primary_address
+            )
 
     if not address_data:
-        frappe.throw(_("Customer address not found"))
+        frappe.throw(_("Supplier address not found"))
 
     # ---------------- COUNTRY CODE ----------------
     country_dict = country_code_mapping()
@@ -680,7 +682,7 @@ def build_uae_invoice_json(invoice_number):
     is_ftz = transaction_code and transaction_code.startswith("1")
     validate_receiving_party_fields(sales_invoice_doc,customer_doc,address_data,transaction_code)
     receiving_party = {
-                "trade_name":  customer_doc.customer_name,
+                "trade_name":  customer_doc.supplier_name,
                 "peppol_id":  customer_doc.custom_peppol_id,
                 "street_address": address_data.address_line1,
                 "city_address": address_data.city,
@@ -691,14 +693,14 @@ def build_uae_invoice_json(invoice_number):
                 "additional_address_lines":  address_data.address_line2,
                 "country_code": country_code1 ,
                 "vat_number": customer_doc.tax_id ,
-                "legal_name":  customer_doc.customer_name,
+                "legal_name":  customer_doc.supplier_name,
                 # "identifiers":  [
                 #         {
                 #             "type": "TL",
                 #             "value": "112345679000001"
                 #         }
                 #         ],
-                "contact_name" :  customer_doc.customer_name,
+                "contact_name" :  customer_doc.supplier_name,
                 "contact_telephone": address_data.phone ,
                 "contact_email": address_data.email_id,
     }
