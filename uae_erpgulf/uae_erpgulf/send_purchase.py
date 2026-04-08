@@ -103,6 +103,7 @@ def generate_and_send_einvoice(doc, method=None):
     """
     Store Success/Failed in custom_uae_einvoice_status
     """
+    
     if isinstance(doc, str):
         doc = frappe.parse_json(doc)
 

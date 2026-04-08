@@ -2,6 +2,8 @@ import json
 
 
 def country_code_mapping():
+    """Returns a dictionary mapping country names to their ISO 3166-1 alpha-2 codes.
+    """
     country_data = [
         {"name": "Afghanistan", "code": "AF"},
         {"name": "Albania", "code": "AL"},

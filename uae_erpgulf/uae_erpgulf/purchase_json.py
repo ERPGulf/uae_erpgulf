@@ -25,6 +25,7 @@ def get_icv_code(invoice_number):
 
 
 def get_line_extension_amount(sales_invoice_doc):
+    """Calculates line extension amount based on whether taxes are included in print rate and if discount is applied."""
     if not sales_invoice_doc.taxes or sales_invoice_doc.taxes[0].included_in_print_rate == 0:
         line_extension_amount = str(round(abs(sales_invoice_doc.total), 2))
     else:
@@ -46,7 +47,7 @@ def get_line_extension_amount(sales_invoice_doc):
 
 
 def get_tax_exc(sales_invoice_doc):
-    
+    """Calculates tax exclusive amount based on whether taxes are included in print rate and if discount is applied."""
     if sales_invoice_doc.taxes[0].included_in_print_rate == 0:
             tax_exclusive_amount = str(
                 round(
@@ -130,6 +131,7 @@ def get_tax_inclusive(sales_invoice_doc):
 
 
 def get_payable_amount(sales_invoice_doc):
+    """Calculates the total payable amount based on whether taxes are included in print rate and if discount is applied."""
     if sales_invoice_doc.taxes[0].included_in_print_rate == 0:
             taxable_amount_1 = sales_invoice_doc.total - sales_invoice_doc.get(
                 "discount_amount", 0.0
@@ -175,15 +177,12 @@ def get_payable_amount(sales_invoice_doc):
 
 def get_invoice_type_code(sales_invoice_doc):
     """
-    Returns invoice_type_code based on Sales Invoice flags:
+    Returns invoice_type_code based on Purchase Invoice flags:
     """
     if sales_invoice_doc.is_return == 1:
-        return "381"
-    if sales_invoice_doc.custom_credit_note_related_to_goods_or_services_out_of_scope == 1:
-        return "81"
-    if sales_invoice_doc.custom_invoice_out_of_scope_of_tax == 1:
-        return "480"
-    return "380"
+        return "361"
+    
+    return "389"
 
 def get_due_date(sales_invoice_doc, issue_date):
     """
@@ -191,8 +190,7 @@ def get_due_date(sales_invoice_doc, issue_date):
     """
     if sales_invoice_doc.is_return == 1:
         return None
-    if sales_invoice_doc.custom_credit_note_related_to_goods_or_services_out_of_scope == 1:
-        return None
+   
     if getattr(sales_invoice_doc, "custom_invoice_transaction_type_code", None) == "X1XXXXX : Deemed supply transaction":
         return None
     if sales_invoice_doc.outstanding_amount > 0:
@@ -278,8 +276,6 @@ def get_tax_point_date(sales_invoice_doc):
     """
     if sales_invoice_doc.is_return == 1:
         return None
-    if sales_invoice_doc.custom_credit_note_related_to_goods_or_services_out_of_scope == 1:
-        return None
     if not sales_invoice_doc.due_date:
         return None
     issue_date = sales_invoice_doc.posting_date
@@ -342,13 +338,14 @@ def validate_receiving_party_fields(
     transaction_type_code,
     # items
 ):
+    """Performs validations on the receiving party (customer) fields based."""
     errors = []
 
     is_credit_note = sales_invoice_doc.is_return == 1
-    is_out_of_scope = sales_invoice_doc.custom_invoice_out_of_scope_of_tax == 1
+    
 
 
-    if not customer_doc.customer_name:
+    if not customer_doc.supplier_name:
         errors.append("IBR-007: Legal name (IBT-044) MUST be provided")
     if not address_data.address_line1:
         errors.append("IBR-144-ae: Address line 1 (IBT-050) MUST be provided")
@@ -362,7 +359,7 @@ def validate_receiving_party_fields(
         errors.append("IBR-008: Country code (IBT-055) MUST be provided")
     if not address_data.email_id:
         errors.append("IBR-011: Electronic email id (IBT-049) MUST be provided")
-    if is_credit_note or is_out_of_scope:
+    if is_credit_note :
         if not customer_doc.custom_trade_license_number:
             errors.append(
                 "IBR-136-ae: Legal registration identifier (IBT-047) "
@@ -394,6 +391,7 @@ def validate_receiving_party_fields(
 
 
 def get_item_data(sales_invoice_doc, vat_rate):
+    """Builds the invoice lines with tax and classification details, while performing necessary validations."""
     total_net = Decimal(0)
     total_tax = Decimal(0)
     invoice = {"invoice_lines": []}
@@ -406,7 +404,7 @@ def get_item_data(sales_invoice_doc, vat_rate):
 
     for idx, item in enumerate(sales_invoice_doc.items, 1):
         # Validation
-        if item.qty <= 0:
+        if item.qty <= 0 and not sales_invoice_doc.is_return:
             frappe.throw(_(f"Invoiced quantity must be greater than zero for item {item.item_name}"))
 
         if not item.custom_item_type_codes:
@@ -554,7 +552,7 @@ def get_payment_means(sales_invoice_doc):
             "network_id": sales_invoice_doc.card_network or "UNKNOWN",
             "holder_name": (
                 sales_invoice_doc.card_holder_name
-                or sales_invoice_doc.customer_name
+                or sales_invoice_doc.supplier_name
             )
         }
 
@@ -562,6 +560,7 @@ def get_payment_means(sales_invoice_doc):
         "payment_means": [payment_means]
     }
 def get_invoice_transaction_metadata(doc):
+    """Extracts the invoice transaction type code and returns a dict of boolean flags for each transaction type."""
     code = (doc.custom_invoice_transaction_type_code or "").strip()
 
     if not code:
@@ -592,57 +591,122 @@ def get_invoice_transaction_metadata(doc):
         "is_export": bit_code[7] == "1",
     }
 
-def get_payment_means(sales_invoice_doc):
-    """Build UAE E-invoicing payment_means array from Sales Invoice payments."""
+# def get_payment_means(sales_invoice_doc):
+#     """Build UAE E-invoicing payment_means array from Sales Invoice payments."""
+
+#     payment_means_list = []
+
+#     for pay_row in sales_invoice_doc.payments:
+#         # 1. Get Mode of Payment document
+#         mop = frappe.get_doc("Mode of Payment", pay_row.mode_of_payment)
+
+#         # 2. Get custom payment means code (stored in MoP)
+#         pm_code = mop.get("custom_payment_means_codes") or ""
+
+#         # 3. Get first account under Mode of Payment → Accounts child table
+#         if not mop.accounts:
+#             continue
+
+#         mop_acc = mop.accounts[0]
+
+#         # 4. Fetch Account document
+#         acc = frappe.get_doc("Account", mop_acc.default_account)
+
+#         # -------------------------
+#         # UAE JSON construction
+#         # -------------------------
+#         payment_means_entry = {
+#             "payment_means_code": pm_code,
+#             "payment_means_code_name": mop.mode_of_payment,
+#             "payee_financial_account": {
+#                 "id": acc.account_number,
+#                 "id_scheme_id": "IBAN" if acc.account_type == "Bank" else "OTH",
+#                 "name": acc.account_name,
+#                 "financial_institution_branch": {
+#                     "id": acc.company or ""
+#                 }
+#             }
+#         }
+
+#         # If card payments → include card details (optional)
+#         if pm_code in ["48", "55", "57"]:  # Debit/Credit card
+#             payment_means_entry["card_account"] = {
+#                 "primary_account_number_id": "XXXXXXXXXXXX1234",
+#                 "network_id": "VISA",
+#                 "holder_name": sales_invoice_doc.customer
+#             }
+
+#         payment_means_list.append(payment_means_entry)
+
+#     return payment_means_list
+def get_payment_means(purchase_invoice_doc):
+    """Build UAE E-invoicing payment_means for Purchase Invoice (simple & correct)."""
 
     payment_means_list = []
 
-    for pay_row in sales_invoice_doc.payments:
-        # 1. Get Mode of Payment document
-        mop = frappe.get_doc("Mode of Payment", pay_row.mode_of_payment)
+    # 1️⃣ Get payment means code from Purchase Invoice
+    pm_code = purchase_invoice_doc.get("custom_payment_means_codes") or "30"
 
-        # 2. Get custom payment means code (stored in MoP)
-        pm_code = mop.get("custom_payment_means_codes") or ""
+    # 2️⃣ Build basic structure (PEPPOL compliant)
+    payment_means_entry = {
+        "payment_means_code": pm_code,
+        "payment_means_code_name": "Credit" if pm_code == "30" else "Other"
+    }
 
-        # 3. Get first account under Mode of Payment → Accounts child table
-        if not mop.accounts:
-            continue
-
-        mop_acc = mop.accounts[0]
-
-        # 4. Fetch Account document
-        acc = frappe.get_doc("Account", mop_acc.default_account)
-
-        # -------------------------
-        # UAE JSON construction
-        # -------------------------
-        payment_means_entry = {
-            "payment_means_code": pm_code,
-            "payment_means_code_name": mop.mode_of_payment,
-            "payee_financial_account": {
-                "id": acc.account_number,
-                "id_scheme_id": "IBAN" if acc.account_type == "Bank" else "OTH",
-                "name": acc.account_name,
-                "financial_institution_branch": {
-                    "id": acc.company or ""
-                }
-            }
+    # 3️⃣ Optional: card details (only if needed)
+    if pm_code in ["48", "55", "57"]:
+        payment_means_entry["card_account"] = {
+            "primary_account_number_id": "XXXXXXXXXXXX1234",
+            "network_id": "VISA",
+            "holder_name": purchase_invoice_doc.supplier or ""
         }
 
-        # If card payments → include card details (optional)
-        if pm_code in ["48", "55", "57"]:  # Debit/Credit card
-            payment_means_entry["card_account"] = {
-                "primary_account_number_id": "XXXXXXXXXXXX1234",
-                "network_id": "VISA",
-                "holder_name": sales_invoice_doc.customer
-            }
-
-        payment_means_list.append(payment_means_entry)
+    payment_means_list.append(payment_means_entry)
 
     return payment_means_list
 
+def add_credit_note_details(invoice_doc, invoice_json):
+    """
+    Adds credit note reason code & reason into JSON
+    Handles:
+    - '01-Return' format
+    - Separate custom reason field
+    - Default fallback
+    """
+
+    if not invoice_doc.is_return:
+        return invoice_json
+
+    # Default mapping (fallback)
+    REASON_MAP = {
+        "01": "Return",
+        "02": "Discount",
+        "03": "Pricing Error",
+        "04": "Correction"
+    }
+
+    raw_value = invoice_doc.custom_credit_note_reason_code or "01-Return"
+
+    # Split code and reason
+    if "-" in raw_value:
+        code, reason = raw_value.split("-", 1)
+    else:
+        code = raw_value
+        reason = REASON_MAP.get(code, "Return of goods")
+
+    # Override with custom text field if provided
+    final_reason = invoice_doc.custom_credit_note_reason_code or reason
+
+    # Update JSON
+    invoice_json.update({
+        "credit_note_reason_code": code.strip(),
+        "credit_note_reason": final_reason.strip()
+    })
+
+    return invoice_json
 
 def build_uae_invoice_json(invoice_number):
+    """Builds the UAE / PEPPOL compliant JSON invoice payload from the Purchase Invoice document."""
     sales_invoice_doc = frappe.get_doc("Purchase Invoice", invoice_number)
     company_doc = frappe.get_doc("Company", sales_invoice_doc.company)
     if company_doc.custom_uae_einvoice_enabled !=1 :
@@ -651,16 +715,16 @@ def build_uae_invoice_json(invoice_number):
     customer_doc = frappe.get_doc("Supplier", sales_invoice_doc.supplier)
     address_data = None
 
-    if sales_invoice_doc.customer_address:
-        address_data = frappe.get_doc("Address", sales_invoice_doc.primary_address)
-    elif customer_doc.customer_primary_address:
+    if sales_invoice_doc.supplier_address:
+        address_data = frappe.get_doc("Address", sales_invoice_doc.supplier_address)
+    elif customer_doc.supplier_primary_address:
         address_data = frappe.get_doc(
-                "Address", company_doc.supplier_primary_address
+                "Address", customer_doc.supplier_primary_address
             )
 
     if not address_data:
         frappe.throw(_("Supplier address not found"))
-
+    
     # ---------------- COUNTRY CODE ----------------
     country_dict = country_code_mapping()
 
@@ -775,7 +839,7 @@ def build_uae_invoice_json(invoice_number):
                 "tax_exclusive_amount": tax_exclusive_amount,
                 "tax_inclusive_amount": tax_inclusive_amount,
                 "allowance_total_amount":  str(abs(sales_invoice_doc.get("discount_amount", 0.0))),
-                "charge_total_amount": str(abs(sales_invoice_doc.get("base_change_amount", 0.0))),
+                "charge_total_amount": str(abs(sales_invoice_doc.get("change_amount") or 0.0)),
                 "prepaid_amount": 0,
                 "payable_rounding_amount": payable_rounding_amount,
                 "payable_amount": payable_amount,
@@ -787,6 +851,7 @@ def build_uae_invoice_json(invoice_number):
         "invoice_totals": {},
         "metadata":get_invoice_transaction_metadata(sales_invoice_doc)
     }
+    invoice = add_credit_note_details(sales_invoice_doc, invoice)
     exchange_rate = get_currency_exchange_rate(sales_invoice_doc)
     if exchange_rate is not None:
         invoice["currency_exchange_rate"] = exchange_rate
@@ -839,7 +904,7 @@ def save_and_attach_invoice_json(invoice_number):
     old_files = frappe.get_all(
         "File",
         filters={
-            "attached_to_doctype": "Sales Invoice",
+            "attached_to_doctype": "Purchase Invoice",
             "attached_to_name": invoice_number,
         },
         fields=["name", "file_name"],
@@ -854,11 +919,11 @@ def save_and_attach_invoice_json(invoice_number):
         "file_name": f"{invoice_number}_uae_invoice.json",
         "is_private": 1,
         "content": json_content,
-        "attached_to_doctype": "Sales Invoice",
+        "attached_to_doctype": "Purchase Invoice",
         "attached_to_name": invoice_number,
     })
     file_doc.insert(ignore_permissions=True)
-
+    # frappe.throw(_("Invoice JSON attached as file: {0}").format(file_doc.file_name))
     frappe.db.commit()
 
     return {
@@ -870,7 +935,7 @@ def save_and_attach_invoice_json(invoice_number):
 @frappe.whitelist()
 def send_invoice_json(invoice_number):
     if not invoice_number:
-        frappe.throw(_("Sales Invoice not provided"))
+        frappe.throw(_("Purchase Invoice not provided"))
 
     result = save_and_attach_invoice_json(invoice_number)
 
@@ -878,6 +943,7 @@ def send_invoice_json(invoice_number):
         "message": _("Invoice JSON generated and attached successfully"),
         "file_url": result["file_url"]
     }
+    
 def get_uae_emirate_code(emirate_name):
     """
     Convert full UAE emirate name to PEPPOL subdivision code.
@@ -903,7 +969,7 @@ def get_item_line_extension_amount(item):
     Calculate line extension amount per invoice line.
     = qty × rate (excluding VAT)
     """
-    amount = abs(item.qty * item.rate)
+    amount = (item.qty * item.rate)
     return str(round(amount, 2))    
 def get_vat_category_code(vat_category_label):
     """

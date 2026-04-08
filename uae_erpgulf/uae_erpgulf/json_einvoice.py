@@ -25,6 +25,8 @@ def get_icv_code(invoice_number):
 
 
 def get_line_extension_amount(sales_invoice_doc):
+    """Calculates line extension amount based on whether taxes are included in print rate and if discount is applied.
+    """
     if not sales_invoice_doc.taxes or sales_invoice_doc.taxes[0].included_in_print_rate == 0:
         line_extension_amount = str(round(abs(sales_invoice_doc.total), 2))
     else:
@@ -46,7 +48,7 @@ def get_line_extension_amount(sales_invoice_doc):
 
 
 def get_tax_exc(sales_invoice_doc):
-    
+    """Calculates tax exclusive amount based on whether taxes are included in print rate and if discount is applied."""
     if sales_invoice_doc.taxes[0].included_in_print_rate == 0:
             tax_exclusive_amount = str(
                 round(
@@ -80,6 +82,7 @@ def get_tax_exc(sales_invoice_doc):
     return tax_exclusive_amount
 
 def get_tax_inclusive(sales_invoice_doc):
+    """Calculates tax inclusive amount based on whether taxes are included in print rate and if discount is applied."""
     if sales_invoice_doc.taxes[0].included_in_print_rate == 0:
             taxable_amount_1 = sales_invoice_doc.total - sales_invoice_doc.get(
                 "discount_amount", 0.0
@@ -130,6 +133,7 @@ def get_tax_inclusive(sales_invoice_doc):
 
 
 def get_payable_amount(sales_invoice_doc):
+    """Calculates payable amount based on whether taxes are included in print rate and if discount is applied."""
     if sales_invoice_doc.taxes[0].included_in_print_rate == 0:
             taxable_amount_1 = sales_invoice_doc.total - sales_invoice_doc.get(
                 "discount_amount", 0.0
@@ -259,6 +263,7 @@ def get_invoice_notes(sales_invoice_doc):
     return invoice_note
 
 def get_issue_time(sales_invoice_doc):
+    """IBT-010 / ibr-128-ae compliant Issue Time resolver"""
     issue_time = sales_invoice_doc.posting_time
     if not issue_time:
         return None
@@ -342,6 +347,7 @@ def validate_receiving_party_fields(
     transaction_type_code,
     # items
 ):
+    """Validates receiving party fields based on IBF-14 / IBR-135-ae and related rules."""
     errors = []
 
     is_credit_note = sales_invoice_doc.is_return == 1
@@ -394,6 +400,7 @@ def validate_receiving_party_fields(
 
 
 def get_item_data(sales_invoice_doc, vat_rate):
+    """Builds the invoice lines with tax and classification details, while performing necessary validations."""
     total_net = Decimal(0)
     total_tax = Decimal(0)
     invoice = {"invoice_lines": []}
@@ -406,7 +413,7 @@ def get_item_data(sales_invoice_doc, vat_rate):
 
     for idx, item in enumerate(sales_invoice_doc.items, 1):
         # Validation
-        if item.qty <= 0:
+        if item.qty <= 0 and not sales_invoice_doc.is_return:
             frappe.throw(_(f"Invoiced quantity must be greater than zero for item {item.item_name}"))
 
         if not item.custom_item_type_codes:
@@ -562,6 +569,7 @@ def get_payment_means(sales_invoice_doc):
         "payment_means": [payment_means]
     }
 def get_invoice_transaction_metadata(doc):
+    """Extracts the invoice transaction metadata bits from the custom field and returns a dict of flags for each type."""
     code = (doc.custom_invoice_transaction_type_code or "").strip()
 
     if not code:
@@ -641,8 +649,48 @@ def get_payment_means(sales_invoice_doc):
 
     return payment_means_list
 
+def add_credit_note_details(invoice_doc, invoice_json):
+    """
+    Adds credit note reason code & reason into JSON
+    Handles:
+    - '01-Return' format
+    - Separate custom reason field
+    - Default fallback
+    """
+
+    if not invoice_doc.is_return:
+        return invoice_json
+
+    # Default mapping (fallback)
+    REASON_MAP = {
+        "01": "Return",
+        "02": "Discount",
+        "03": "Pricing Error",
+        "04": "Correction"
+    }
+
+    raw_value = invoice_doc.custom_credit_note_reason_code or "01-Return"
+
+    # Split code and reason
+    if "-" in raw_value:
+        code, reason = raw_value.split("-", 1)
+    else:
+        code = raw_value
+        reason = REASON_MAP.get(code, "Return of goods")
+
+    # Override with custom text field if provided
+    final_reason = invoice_doc.custom_credit_note_reason_code or reason
+
+    # Update JSON
+    invoice_json.update({
+        "credit_note_reason_code": code.strip(),
+        "credit_note_reason": final_reason.strip()
+    })
+
+    return invoice_json
 
 def build_uae_invoice_json(invoice_number):
+    """Builds the UAE / PEPPOL compliant JSON invoice payload from the Sales Invoice document."""
     sales_invoice_doc = frappe.get_doc("Sales Invoice", invoice_number)
     company_doc = frappe.get_doc("Company", sales_invoice_doc.company)
     if company_doc.custom_uae_einvoice_enabled !=1 :
@@ -785,6 +833,7 @@ def build_uae_invoice_json(invoice_number):
         "invoice_totals": {},
         "metadata":get_invoice_transaction_metadata(sales_invoice_doc)
     }
+    invoice = add_credit_note_details(sales_invoice_doc, invoice)
     exchange_rate = get_currency_exchange_rate(sales_invoice_doc)
     if exchange_rate is not None:
         invoice["currency_exchange_rate"] = exchange_rate
@@ -867,6 +916,7 @@ def save_and_attach_invoice_json(invoice_number):
 
 @frappe.whitelist()
 def send_invoice_json(invoice_number):
+    """API endpoint to trigger JSON generation and attachment for a given Sales Invoice."""
     if not invoice_number:
         frappe.throw(_("Sales Invoice not provided"))
 
@@ -901,7 +951,7 @@ def get_item_line_extension_amount(item):
     Calculate line extension amount per invoice line.
     = qty × rate (excluding VAT)
     """
-    amount = abs(item.qty * item.rate)
+    amount = (item.qty * item.rate)
     return str(round(amount, 2))    
 def get_vat_category_code(vat_category_label):
     """

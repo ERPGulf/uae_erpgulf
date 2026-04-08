@@ -2,6 +2,7 @@ import requests
 import frappe
 
 def update_flick_participant(company, participant_id):
+    """Updates participant details in Flick based on the Company document."""
     doc = frappe.get_doc("Company", company)
 
     base_url = doc.custom_base_url

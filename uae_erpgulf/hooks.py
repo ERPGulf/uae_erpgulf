@@ -253,7 +253,7 @@ app_license = "mit"
 doctype_js = {
     "Sales Invoice": "public/js/sales_invoice.js",
     "Company":"public/js/company.js",
-    "Purchase Invoice":"public/js/purchase.js"
+    "Purchase Invoice":"public/js/purchase.js",
     
 }
 doctype_list_js = {
