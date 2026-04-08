@@ -38,3 +38,40 @@ frappe.ui.form.on("Purchase Invoice", {
         }
     }
 });
+
+
+
+frappe.ui.form.on("Purchase Invoice", {
+    refresh: function (frm) {
+
+        if (!frm.doc.__islocal) {
+
+            frm.add_custom_button(__('Get Document Status'), function () {
+
+                frappe.call({
+                    method: "uae_erpgulf.uae_erpgulf.send_purchase.get_document_status",
+                    args: {
+                        invoice_name: frm.doc.name
+                    },
+                    freeze: true,
+                    freeze_message: __("Checking Flick Document Status..."),
+                    callback: function (r) {
+
+                        if (r.message) {
+
+                            frappe.msgprint({
+                                title: __("Flick Response"),
+                                message: `<pre>${JSON.stringify(r.message, null, 2)}</pre>`,
+                                indicator: "green"
+                            });
+
+                        }
+
+                    }
+                });
+
+            });
+
+        }
+    }
+});

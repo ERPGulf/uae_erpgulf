@@ -252,15 +252,20 @@ app_license = "mit"
 
 doctype_js = {
     "Sales Invoice": "public/js/sales_invoice.js",
-    "Company":"public/js/company.js"
+    "Company":"public/js/company.js",
+    "Purchase Invoice":"public/js/purchase.js"
     
 }
 doctype_list_js = {
-    "Sales Invoice": "public/js/bulk_submit.js"
+    "Sales Invoice": "public/js/bulk_submit.js",
+    "Purchase Invoice": "public/js/bulk_submit_pur.js"
 }
 doc_events = {
     "Sales Invoice": {
         "on_submit": "uae_erpgulf.uae_erpgulf.test.generate_and_send_einvoice"
+    },
+    "Purchase Invoice": {
+        "on_submit": "uae_erpgulf.uae_erpgulf.send_purchase.generate_and_send_einvoice"
     }
 }
 fixtures = [

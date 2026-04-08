@@ -1,11 +1,15 @@
 import frappe
 import requests
 import json
-
+from frappe import _
+from frappe.utils import get_datetime, now_datetime
+from datetime import timedelta
+from uae_erpgulf.uae_erpgulf.verify_token import get_flick_access_token
 
 
 @frappe.whitelist(allow_guest=True)
 def flick_webhook_listener():
+    """Listener for Flick API webhooks. Logs incoming data and updates invoice status."""
     try:
         raw_data = frappe.request.get_data(as_text=True)
         data = json.loads(raw_data)
@@ -93,11 +97,32 @@ def register_flick_webhook(company):
     base_url = company_doc.custom_base_url
     url = f"{base_url}/v1/webhooks/subscriptions"
     participant_id = company_doc.custom_participant_id
-    headers = {
-        "Content-Type": "application/json",
-        "X-Flick-Auth-Key": company_doc.custom_xflickauthkey # replace this
-    }
+    
 
+    current_time = now_datetime()
+    created_time = get_datetime(company_doc.custom_token_expiry_time)
+
+    if not created_time or current_time >= created_time + timedelta(hours=1):
+        get_flick_access_token(company_doc.name)
+        company_doc.reload()
+    access_token = company_doc.custom_access_token
+    if company_doc.custom_xflickauthkey :
+        headers = {
+            "Content-Type": "application/json",
+            "X-Flick-Auth-Key": company_doc.custom_xflickauthkey 
+        }
+
+    # Case 2: Fallback to Access Token
+    elif access_token:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}"
+        }
+
+    # Case 3: Neither available
+    else:
+        frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
+    
     payload = {
         "name": "ERPNext Webhook",
         "endpoint": "https://uae.erpgulf.com:4772/api/method/uae_erpgulf.uae_erpgulf.webhook.flick_webhook_listener",
@@ -147,10 +172,28 @@ def custom_get_subscription(company):
         frappe.throw("Webhook UUID not found. Please create subscription first.")
 
     url = f"{base_url}/v1/webhooks/subscriptions/{uuid}"
+    current_time = now_datetime()
+    created_time = get_datetime(company_doc.custom_token_expiry_time)
 
-    headers = {
-        "X-Flick-Auth-Key": company_doc.custom_xflickauthkey
-    }
+    if not created_time or current_time >= created_time + timedelta(hours=1):
+        get_flick_access_token(company_doc.name)
+        company_doc.reload()
+    access_token = company_doc.custom_access_token
+    if company_doc.custom_xflickauthkey :
+        headers = {
+            "X-Flick-Auth-Key": company_doc.custom_xflickauthkey 
+        }
+
+    # Case 2: Fallback to Access Token
+    elif access_token:
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+
+    # Case 3: Neither available
+    else:
+        frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
+    
 
     response = requests.get(url, headers=headers)
 
@@ -173,11 +216,28 @@ def get_webhook_deliveries(company):
     uuid = company_doc.custom_uuid_of_webhook
 
     url = f"{base_url}/v1/webhooks/subscriptions/{uuid}/deliveries"
+    current_time = now_datetime()
+    created_time = get_datetime(company_doc.custom_token_expiry_time)
 
-    headers = {
-        "X-Flick-Auth-Key": company_doc.custom_xflickauthkey
-    }
+    if not created_time or current_time >= created_time + timedelta(hours=1):
+        get_flick_access_token(company_doc.name)
+        company_doc.reload()
+    access_token = company_doc.custom_access_token
+    if company_doc.custom_xflickauthkey :
+        headers = {
+            "X-Flick-Auth-Key": company_doc.custom_xflickauthkey 
+        }
 
+    # Case 2: Fallback to Access Token
+    elif access_token:
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+
+    # Case 3: Neither available
+    else:
+        frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
+    
     response = requests.get(url, headers=headers)
 
     try:

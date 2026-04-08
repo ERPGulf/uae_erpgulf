@@ -215,8 +215,6 @@ def get_document_status(invoice_name):
         if not participant_id:
             frappe.throw(_("Participant ID is missing in Company"))
 
-        if not auth_key:
-            frappe.throw(_("X-Flick Auth Key is missing in Company"))
 
         if not sales_invoice_doc.custom_submit_response:
             frappe.throw(_("Submit response not found in Sales Invoice"))
@@ -232,10 +230,30 @@ def get_document_status(invoice_name):
             frappe.throw(_("Base URL is missing in Company"))
         url = f"{base_url}/v1/{participant_id}/documents/{document_id}"
 
-        headers = {
-            "X-Flick-Auth-Key": auth_key
-        }
+        from frappe.utils import get_datetime, now_datetime
+        from datetime import timedelta
 
+        current_time = now_datetime()
+        created_time = get_datetime(company_doc.custom_token_expiry_time)
+
+        if not created_time or current_time >= created_time + timedelta(hours=1):
+            get_flick_access_token(company_doc.name)
+            company_doc.reload()
+        access_token = company_doc.custom_access_token
+        if auth_key:
+            headers = {
+                "X-Flick-Auth-Key": auth_key
+            }
+
+        # Case 2: Fallback to Access Token
+        elif access_token:
+            headers = {
+                "Authorization": f"Bearer {access_token}"
+            }
+
+        # Case 3: Neither available
+        else:
+            frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
         response = requests.get(url, headers=headers)
 
       

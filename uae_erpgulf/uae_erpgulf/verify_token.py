@@ -3,7 +3,8 @@ import http.client
 import json
 import requests
 from frappe import _
-from datetime import now_datetime
+# from datetime import now_datetime
+from frappe.utils import now_datetime 
 import pytz
 
 from uae_erpgulf.uae_erpgulf.attach import get_document_xml
@@ -53,14 +54,33 @@ def get_participant_details(company):
     auth_key = company_doc.custom_xflickauthkey
     if not participant_id:
         frappe.throw(_("Participant ID is missing in Company"))
-    if not auth_key:
-        frappe.throw(_("X-Flick Auth Key is missing in Company"))
-
+    
     url = f"{base_url}/v1/participants/{participant_id}"
+    from frappe.utils import get_datetime, now_datetime
+    from datetime import timedelta
 
-    headers = {
-        "X-Flick-Auth-Key": auth_key
-    }
+    current_time = now_datetime()
+    created_time = get_datetime(company_doc.custom_token_expiry_time)
+
+    if not created_time or current_time >= created_time + timedelta(hours=1):
+        get_flick_access_token(company_doc.name)
+        company_doc.reload()
+    access_token = company_doc.custom_access_token
+    if auth_key:
+        headers = {
+            "X-Flick-Auth-Key": auth_key
+        }
+
+    # Case 2: Fallback to Access Token
+    elif access_token:
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+
+    # Case 3: Neither available
+    else:
+        frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
+
     response = requests.get(url, headers=headers)
     data = response.json()
     company_doc.custom_participant_details_response = json.dumps(data, indent=4)
@@ -69,69 +89,6 @@ def get_participant_details(company):
         "status": "success",
         "response": data
     }
-
-
-
-@frappe.whitelist()
-def get_document_status(invoice_name):
-    """Fetch document status from Flick API and save response in Sales Invoice DocType"""
-    try:
-        sales_invoice_doc = frappe.get_doc("Sales Invoice", invoice_name)
-        company_doc = frappe.get_doc("Company", sales_invoice_doc.company)
-
-        participant_id = company_doc.custom_participant_id
-        auth_key = company_doc.custom_xflickauthkey
-
-        if not participant_id:
-            frappe.throw(_("Participant ID is missing in Company"))
-
-        if not auth_key:
-            frappe.throw(_("X-Flick Auth Key is missing in Company"))
-
-        if not sales_invoice_doc.custom_submit_response:
-            frappe.throw(_("Submit response not found in Sales Invoice"))
-
-        # Extract document ID
-        response_data = json.loads(sales_invoice_doc.custom_submit_response)
-        document_id = response_data.get("data", {}).get("id")
-
-        if not document_id:
-            frappe.throw(_("Document ID not found in submit response"))
-        base_url = company_doc.custom_base_url
-        if not base_url:
-            frappe.throw(_("Base URL is missing in Company"))
-        url = f"{base_url}/v1/{participant_id}/documents/{document_id}"
-
-        headers = {
-            "X-Flick-Auth-Key": auth_key
-        }
-
-        response = requests.get(url, headers=headers)
-
-      
-        if response.status_code == 200:
-            response_json = response.json()
-            data = response_json.get("data", {})
-            reporting_status = data.get("reporting_status")
-            sales_invoice_doc.db_set(
-                "custom_submit_response",
-                json.dumps(response_json, indent=2)
-            )
-            if reporting_status:
-                sales_invoice_doc.db_set(
-                    "custom_reporting_status",
-                    reporting_status)
-            #   get_document_xml(invoice_name)
-            return response_json
-
-        else:
-            return {
-                "status": "error",
-                "message": response.text
-    }
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "Flick Document Status Error")
-        frappe.throw(_("Failed to fetch document status"))
 
 
 
@@ -181,3 +138,91 @@ def get_flick_access_token(company:str):
             "status": "error",
             "message": str(e)
         }
+
+
+
+@frappe.whitelist()
+def get_document_status(invoice_name):
+    """Fetch document status from Flick API and save response in Sales Invoice DocType"""
+    try:
+        sales_invoice_doc = frappe.get_doc("Sales Invoice", invoice_name)
+        company_doc = frappe.get_doc("Company", sales_invoice_doc.company)
+
+        participant_id = company_doc.custom_participant_id
+        auth_key = company_doc.custom_xflickauthkey
+
+        if not participant_id:
+            frappe.throw(_("Participant ID is missing in Company"))
+
+
+        if not sales_invoice_doc.custom_submit_response:
+            frappe.throw(_("Submit response not found in Sales Invoice"))
+
+        # Extract document ID
+        response_data = json.loads(sales_invoice_doc.custom_submit_response)
+        document_id = response_data.get("data", {}).get("id")
+
+        if not document_id:
+            frappe.throw(_("Document ID not found in submit response"))
+        base_url = company_doc.custom_base_url
+        if not base_url:
+            frappe.throw(_("Base URL is missing in Company"))
+        url = f"{base_url}/v1/{participant_id}/documents/{document_id}"
+
+        from frappe.utils import get_datetime, now_datetime
+        from datetime import timedelta
+
+        current_time = now_datetime()
+        created_time = get_datetime(company_doc.custom_token_expiry_time)
+
+        if not created_time or current_time >= created_time + timedelta(hours=1):
+            get_flick_access_token(company_doc.name)
+            company_doc.reload()
+        access_token = company_doc.custom_access_token
+        if auth_key:
+            headers = {
+                "X-Flick-Auth-Key": auth_key
+            }
+
+        # Case 2: Fallback to Access Token
+        elif access_token:
+            headers = {
+                "Authorization": f"Bearer {access_token}"
+            }
+
+        # Case 3: Neither available
+        else:
+            frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
+        # headers = {
+        #     "X-Flick-Auth-Key": auth_key
+        # }
+
+        response = requests.get(url, headers=headers)
+
+      
+        if response.status_code == 200:
+            response_json = response.json()
+            data = response_json.get("data", {})
+            reporting_status = data.get("reporting_status")
+            sales_invoice_doc.db_set(
+                "custom_submit_response",
+                json.dumps(response_json, indent=2)
+            )
+            if reporting_status:
+                sales_invoice_doc.db_set(
+                    "custom_reporting_status",
+                    reporting_status)
+            #   get_document_xml(invoice_name)
+            return response_json
+
+        else:
+            return {
+                "status": "error",
+                "message": response.text
+    }
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Flick Document Status Error")
+        frappe.throw(_("Failed to fetch document status"))
+
+
+
