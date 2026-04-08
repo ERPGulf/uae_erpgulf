@@ -3,7 +3,12 @@ import http.client
 import json
 import requests
 from frappe import _
+from datetime import now_datetime
+import pytz
+
 from uae_erpgulf.uae_erpgulf.attach import get_document_xml
+
+
 @frappe.whitelist(allow_guest=False)
 def verify_flick_token(company):
     """Verify Flick token using fields inside Company DocType"""
@@ -39,6 +44,7 @@ def verify_flick_token(company):
 
 @frappe.whitelist(allow_guest=False)
 def get_participant_details(company):
+    """Fetch participant details from Flick API and save response in Company DocType"""
     company_doc = frappe.get_doc("Company", company)
     base_url = company_doc.custom_base_url
     if not base_url:
@@ -68,6 +74,7 @@ def get_participant_details(company):
 
 @frappe.whitelist()
 def get_document_status(invoice_name):
+    """Fetch document status from Flick API and save response in Sales Invoice DocType"""
     try:
         sales_invoice_doc = frappe.get_doc("Sales Invoice", invoice_name)
         company_doc = frappe.get_doc("Company", sales_invoice_doc.company)
@@ -131,6 +138,7 @@ def get_document_status(invoice_name):
 
 @frappe.whitelist(allow_guest=False)
 def get_flick_access_token(company:str):
+    """Fetch access token from Flick API using Client ID and Client Secret stored in Company DocType"""
     doc = frappe.get_doc("Company", company)
     base_url = doc.custom_base_url
     client_id = doc.custom_client_id
@@ -152,12 +160,18 @@ def get_flick_access_token(company:str):
         response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()  # raises error for bad responses
         response_json = response.json()
+        frappe.msgprint(f"Token Response: {response_json}")
         access_token = response_json.get("access_token")
 
         if not access_token:
             frappe.throw(_("Access token not found in response"))
+          # default 1 hour
+        dubai_tz = pytz.timezone("Asia/Dubai")
 
-        doc.db_set("custom_xflickauthkey", access_token)
+        # Convert current time to Dubai
+        current_time = now_datetime().astimezone(dubai_tz)
+        doc.db_set("custom_token_expiry_time",current_time)
+        doc.db_set("custom_access_token", access_token)
 
         frappe.db.commit()
         return response.json()

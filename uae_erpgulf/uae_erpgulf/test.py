@@ -4,7 +4,11 @@ import frappe
 import json
 import requests
 from frappe import _
+from datetime import timedelta
+from datetime import datetime
+import pytz
 from uae_erpgulf.uae_erpgulf.json_einvoice import send_invoice_json
+from uae_erpgulf.uae_erpgulf.verify_token import get_flick_access_token
 
 def send_invoice_to_flick(doc, method=None):
     """
@@ -35,21 +39,47 @@ def send_invoice_to_flick(doc, method=None):
             json_data = json.load(f)
         company_doc = frappe.get_doc("Company", doc.company)
         participant_id = company_doc.custom_participant_id
-        auth_key = company_doc.custom_xflickauthkey
-        if not participant_id:
-            frappe.throw(_("Participant ID is missing in Company"))
-        if not auth_key:
-            frappe.throw(_("X-Flick Auth Key is missing in Company"))
         payload = {
             "document": json_data
         }
-
-        url =  f"https://sb-ae-api.flick.network/v1/{participant_id}/documents"
+        base_url = company_doc.custom_base_url
+        url =  f"{base_url}/v1/{participant_id}/documents"
         # frappe.throw(_(url))
-        headers = {
-            "Content-Type": "application/json",
-            "X-Flick-Auth-Key": auth_key
-        }
+        auth_key = company_doc.custom_xflickauthkey
+        
+
+        from frappe.utils import get_datetime, now_datetime
+        from datetime import timedelta
+
+        current_time = now_datetime()
+        created_time = get_datetime(company_doc.custom_token_expiry_time)
+
+        if not created_time or current_time >= created_time + timedelta(hours=1):
+            get_flick_access_token(company_doc.name)
+            company_doc.reload()
+        access_token = company_doc.custom_access_token
+
+        if not participant_id:
+            frappe.throw(_("Participant ID is missing in Company"))
+
+        # Case 1: Use X-Flick Auth Key
+        if auth_key:
+            headers = {
+                "Content-Type": "application/json",
+                "X-Flick-Auth-Key": auth_key
+            }
+
+        # Case 2: Fallback to Access Token
+        elif access_token:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}"
+            }
+
+        # Case 3: Neither available
+        else:
+            frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
+       
         response = requests.post(
             url,
             headers=headers,
@@ -103,6 +133,7 @@ def generate_and_send_einvoice(doc, method=None):
         if isinstance(response_data, dict):
             data = response_data.get("data", {})
             reporting_status = data.get("reporting_status")
+            document_id = data.get("id")
         if status_code == 200:
             if isinstance(response_data, dict):
                 if response_data.get("status") in ["success", "processed", "accepted"]:
@@ -114,6 +145,8 @@ def generate_and_send_einvoice(doc, method=None):
         doc.db_set("custom_uae_einvoice_status", invoice_status)
         if reporting_status:
             doc.db_set("custom_reporting_status", reporting_status)
+        if document_id:
+            doc.db_set("custom_document_id", document_id)
         frappe.db.commit()
 
         frappe.msgprint(
@@ -130,7 +163,7 @@ def generate_and_send_einvoice(doc, method=None):
 
 @frappe.whitelist()
 def bulk_send_invoices(invoices):
-
+    """Bulk send multiple invoices to FTA, with error handling and status tracking."""
     if isinstance(invoices, str):
         invoices = frappe.parse_json(invoices)
 

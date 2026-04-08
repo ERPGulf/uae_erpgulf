@@ -5,6 +5,8 @@ from frappe import _
 
 @frappe.whitelist()
 def get_document_xml(invoice_name):
+    """Fetch XML from Flick API and save in Sales Invoice
+    """
     try:
         sales_invoice_doc = frappe.get_doc("Sales Invoice", invoice_name)
         company_doc = frappe.get_doc("Company", sales_invoice_doc.company)
@@ -29,7 +31,6 @@ def get_document_xml(invoice_name):
             frappe.throw(_("Document ID not found in submit response"))
 
         url = f"{base_url}/v1/{participant_id}/documents/{document_id}/xml"
-
         headers = {
             "X-Flick-Auth-Key": auth_key
         }
@@ -61,6 +62,8 @@ def get_document_xml(invoice_name):
 
 @frappe.whitelist()
 def get_document_pdf(invoice_name):
+    """Fetch PDF from Flick API and save in Sales Invoice
+    """
     try:
         sales_invoice_doc = frappe.get_doc("Sales Invoice", invoice_name)
         company_doc = frappe.get_doc("Company", sales_invoice_doc.company)

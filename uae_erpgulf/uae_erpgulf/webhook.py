@@ -2,16 +2,88 @@ import frappe
 import requests
 import json
 
+
+
 @frappe.whitelist(allow_guest=True)
 def flick_webhook_listener():
-    data = frappe.request.get_data(as_text=True)
+    try:
+        raw_data = frappe.request.get_data(as_text=True)
+        data = json.loads(raw_data)
 
-    frappe.log_error(
-        title="Flick Webhook",
-        message=data
-    )
+        # 🔹 Extract top-level fields
+        event_type = data.get("event")
+        participant_id = data.get("participant_id")
 
-    return {"status": "success"}
+        # 🔹 Extract nested data
+        doc_data = data.get("data", {})
+
+        document_id = doc_data.get("document_id")
+        status = doc_data.get("status")
+        exchange_status = doc_data.get("exchange_status")
+        reporting_status = doc_data.get("reporting_status")
+
+        # ✅ Create Webhook Log Doc
+        doc = frappe.get_doc({
+            "doctype": "UAE E-Invoice Webhook Logs",
+            "webhook_response": raw_data,
+            "document_id": document_id,
+            "participant_id": participant_id,
+            "event_type": event_type,
+            "reporting_status": reporting_status,
+            "exchange_status": exchange_status,
+            "status": status
+        })
+
+        doc.insert(ignore_permissions=True)
+        if document_id and reporting_status:
+
+            # 🔹 Sales Invoice
+            sales_invoice = frappe.db.get_value(
+                "Sales Invoice",
+                {"custom_document_id": document_id},
+                "name"
+            )
+
+            if sales_invoice:
+                frappe.db.set_value(
+                    "Sales Invoice",
+                    sales_invoice,
+                    "custom_reporting_status",
+                    reporting_status
+                )
+
+            # 🔹 Purchase Invoice
+            purchase_invoice = frappe.db.get_value(
+                "Purchase Invoice",
+                {"custom_document_id": document_id},
+                "name"
+            )
+
+            if purchase_invoice:
+                frappe.db.set_value(
+                    "Purchase Invoice",
+                    purchase_invoice,
+                    "custom_reporting_status",
+                    reporting_status
+                )
+
+        # frappe.db.commit()
+        frappe.db.commit()
+
+        return {
+            "acknowledged": True,
+            "processed": True
+        }
+
+    except Exception:
+        frappe.log_error(
+            title="Webhook Processing Error",
+            message=frappe.get_traceback()
+        )
+        return {
+            "acknowledged": False,
+            "processed": False
+        }
 
 
 
@@ -20,7 +92,7 @@ def register_flick_webhook(company):
     company_doc = frappe.get_doc("Company", company)
     base_url = company_doc.custom_base_url
     url = f"{base_url}/v1/webhooks/subscriptions"
-
+    participant_id = company_doc.custom_participant_id
     headers = {
         "Content-Type": "application/json",
         "X-Flick-Auth-Key": company_doc.custom_xflickauthkey # replace this
@@ -28,13 +100,17 @@ def register_flick_webhook(company):
 
     payload = {
         "name": "ERPNext Webhook",
-        "endpoint": "https://uae.erpgulf.com/api/method/uae_erpgulf.uae_erpgulf.webhook.flick_webhook_listener",
+        "endpoint": "https://uae.erpgulf.com:4772/api/method/uae_erpgulf.uae_erpgulf.webhook.flick_webhook_listener",
         "event_types": [
-            "document.received",
-            "document.completed",
-            "document.failed"
-        ],
-        "participant_ids": []
+        "document.received",
+        "document.exchange.delivered",
+        "document.exchange.failed",
+        "document.reporting.reported",
+        "document.reporting.failed",
+        "document.completed",
+        "document.failed"
+            ],
+        "participant_ids": [participant_id]
     }
 
     response = requests.post(url, headers=headers, json=payload)
@@ -53,6 +129,8 @@ def register_flick_webhook(company):
     company_doc.custom_webhook_subscription_response = json.dumps(response_data, indent=2)
     if response_data.get("data") and response_data["data"].get("uuid"):
         company_doc.custom_uuid_of_webhook = response_data["data"]["uuid"]
+    if response_data.get("data") and response_data["data"].get("secret"):
+        company_doc.custom_secret_of_webhook = response_data["data"]["secret"]
     company_doc.save(ignore_permissions=True)
 
     return response.json()
@@ -107,7 +185,7 @@ def get_webhook_deliveries(company):
     except Exception:
         data = {"raw_response": response.text}
 
-    company_doc.custom_webhook_delivery_logs = json.dumps(response_data, indent=2)
+    company_doc.custom_webhook_delivery_logs = json.dumps(data, indent=2)
     company_doc.save(ignore_permissions=True)
 
     return data
