@@ -8,9 +8,16 @@ frappe.ui.form.on("Sales Invoice", {
         // 1. Invoice is Submitted (docstatus = 1)
         // 2. UAE status is "Not Submitted"
 
+        // if (
+        //     frm.doc.docstatus === 1 &&
+        //     frm.doc.custom_uae_einvoice_status === "Not Submitted"
+        // ) {
         if (
             frm.doc.docstatus === 1 &&
-            frm.doc.custom_uae_einvoice_status === "Not Submitted"
+            (
+                frm.doc.custom_uae_einvoice_status === "Not Submitted" ||
+                frm.doc.custom_reporting_status === "failed"
+            )
         ) {
 
             frm.add_custom_button(

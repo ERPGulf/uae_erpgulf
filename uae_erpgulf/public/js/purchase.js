@@ -1,16 +1,18 @@
-
 frappe.ui.form.on("Purchase Invoice", {
     refresh(frm) {
 
         frm.clear_custom_buttons();
 
-        // Show button only if:
-        // 1. Invoice is Submitted (docstatus = 1)
-        // 2. UAE status is "Not Submitted"
+        // Show button if:
+        // 1. Submitted
+        // 2. UAE status is Not Submitted OR Failed
 
         if (
             frm.doc.docstatus === 1 &&
-            frm.doc.custom_uae_einvoice_status === "Not Submitted"
+            (
+                frm.doc.custom_uae_einvoice_status === "Not Submitted" ||
+                frm.doc.custom_reporting_status === "failed"
+            )
         ) {
 
             frm.add_custom_button(
@@ -18,9 +20,9 @@ frappe.ui.form.on("Purchase Invoice", {
                 () => {
 
                     frm.call({
-                        method: "uae_erpgulf.uae_erpgulf.test.generate_and_send_einvoice",
+                        method: "uae_erpgulf.uae_erpgulf.send_purchase.generate_and_send_einvoice",
                         args: {
-                            doc: frm.doc   // 🔥 IMPORTANT
+                            doc: frm.doc
                         },
                         freeze: true,
                         freeze_message: __("Generating and sending UAE E-Invoice..."),
@@ -38,8 +40,6 @@ frappe.ui.form.on("Purchase Invoice", {
         }
     }
 });
-
-
 
 frappe.ui.form.on("Purchase Invoice", {
     refresh: function (frm) {

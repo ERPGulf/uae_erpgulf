@@ -124,7 +124,7 @@ def generate_and_send_einvoice(doc, method=None):
             response_text = str(response_data)
     
         invoice_status = "Not Submitted"
-        eporting_status = None  # NEW
+        reporting_status = None  # NEW
 
         # ✅ Extract reporting_status safely
         if isinstance(response_data, dict):
