@@ -25,6 +25,7 @@ def flick_webhook_listener():
         status = doc_data.get("status")
         exchange_status = doc_data.get("exchange_status")
         reporting_status = doc_data.get("reporting_status")
+        invoice_number = doc_data.get("document_identifier")
 
         # ✅ Create Webhook Log Doc
         doc = frappe.get_doc({
@@ -35,6 +36,7 @@ def flick_webhook_listener():
             "event_type": event_type,
             "reporting_status": reporting_status,
             "exchange_status": exchange_status,
+            "invoice_number":invoice_number,
             "status": status
         })
 
@@ -122,10 +124,13 @@ def register_flick_webhook(company):
     # Case 3: Neither available
     else:
         frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
-    
+        
+    endpoint = frappe.utils.get_url(
+    "/api/method/uae_erpgulf.uae_erpgulf.webhook.flick_webhook_listener"
+        )
     payload = {
         "name": "ERPNext Webhook",
-        "endpoint": "https://uae.erpgulf.com:4772/api/method/uae_erpgulf.uae_erpgulf.webhook.flick_webhook_listener",
+        "endpoint": endpoint,
         "event_types": [
         "document.received",
         "document.exchange.delivered",

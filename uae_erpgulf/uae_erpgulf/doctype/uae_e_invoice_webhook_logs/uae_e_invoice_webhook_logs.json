@@ -8,6 +8,7 @@
   "document_id",
   "participant_id",
   "event_type",
+  "invoice_number",
   "column_break_yzyo",
   "status",
   "exchange_status",
@@ -74,12 +75,19 @@
    "label": "Webhook-Response",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "invoice_number",
+   "fieldtype": "Data",
+   "label": "Invoice Number",
+   "no_copy": 1,
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-08 09:39:38.304776",
+ "modified": "2026-04-09 16:48:30.526613",
  "modified_by": "Administrator",
  "module": "uae_erpgulf",
  "name": "UAE E-Invoice Webhook Logs",
