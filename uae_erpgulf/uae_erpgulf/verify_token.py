@@ -1,3 +1,5 @@
+from pydoc import doc
+
 import frappe
 import http.client
 import json
@@ -7,7 +9,6 @@ from frappe import _
 from frappe.utils import now_datetime 
 import pytz
 
-from uae_erpgulf.uae_erpgulf.attach import get_document_xml
 
 
 @frappe.whitelist(allow_guest=False)
@@ -56,16 +57,7 @@ def get_participant_details(company):
         frappe.throw(_("Participant ID is missing in Company"))
     
     url = f"{base_url}/v1/participants/{participant_id}"
-    from frappe.utils import get_datetime, now_datetime
-    from datetime import timedelta
-
-    current_time = now_datetime()
-    created_time = get_datetime(company_doc.custom_token_expiry_time)
-
-    if not created_time or current_time >= created_time + timedelta(hours=1):
-        get_flick_access_token(company_doc.name)
-        company_doc.reload()
-    access_token = company_doc.custom_access_token
+    access_token = get_valid_flick_token(company_doc.name)
     if auth_key:
         headers = {
             "X-Flick-Auth-Key": auth_key
@@ -91,6 +83,9 @@ def get_participant_details(company):
     }
 
 
+
+from frappe.utils import get_datetime, now_datetime
+from datetime import timedelta
 
 
 @frappe.whitelist(allow_guest=False)
@@ -124,14 +119,17 @@ def get_flick_access_token(company:str):
             frappe.throw(_("Access token not found in response"))
           # default 1 hour
         dubai_tz = pytz.timezone("Asia/Dubai")
-
-        # Convert current time to Dubai
         current_time = now_datetime().astimezone(dubai_tz)
-        doc.db_set("custom_token_expiry_time",current_time)
+
+        # ✅ Store ACTUAL expiry
+        expiry_time = current_time + timedelta(hours=1)
+
         doc.db_set("custom_access_token", access_token)
+        doc.db_set("custom_token_expiry_time", expiry_time)
+
 
         frappe.db.commit()
-        return response.json()
+        return {"access_token": access_token}
 
     except requests.exceptions.RequestException as e:
         return {
@@ -140,6 +138,29 @@ def get_flick_access_token(company:str):
         }
 
 
+def get_valid_flick_token(company):
+    company_doc = frappe.get_doc("Company", company)
+
+    current_time = now_datetime()
+    expiry_time = get_datetime(company_doc.custom_token_expiry_time)
+
+    # ✅ If token is valid → return it
+    if (
+        company_doc.custom_access_token
+        and expiry_time
+        and current_time < expiry_time
+    ):
+        return company_doc.custom_access_token
+
+    # ❌ Token expired → fetch new
+    response = get_flick_access_token(company)
+
+    access_token = response.get("access_token")
+
+    if not access_token:
+        frappe.throw("Failed to refresh access token")
+
+    return access_token
 
 @frappe.whitelist()
 def get_document_status(invoice_name):
@@ -169,16 +190,7 @@ def get_document_status(invoice_name):
             frappe.throw(_("Base URL is missing in Company"))
         url = f"{base_url}/v1/{participant_id}/documents/{document_id}"
 
-        from frappe.utils import get_datetime, now_datetime
-        from datetime import timedelta
-
-        current_time = now_datetime()
-        created_time = get_datetime(company_doc.custom_token_expiry_time)
-
-        if not created_time or current_time >= created_time + timedelta(hours=1):
-            get_flick_access_token(company_doc.name)
-            company_doc.reload()
-        access_token = company_doc.custom_access_token
+        access_token = get_valid_flick_token(company_doc.name)
         if auth_key:
             headers = {
                 "X-Flick-Auth-Key": auth_key
@@ -212,7 +224,7 @@ def get_document_status(invoice_name):
                 sales_invoice_doc.db_set(
                     "custom_reporting_status",
                     reporting_status)
-            #   get_document_xml(invoice_name)
+                
             return response_json
 
         else:

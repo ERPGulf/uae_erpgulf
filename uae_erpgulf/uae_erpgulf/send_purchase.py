@@ -4,7 +4,10 @@ import json
 import requests
 from frappe import _
 from uae_erpgulf.uae_erpgulf.purchase_json  import send_invoice_json
-from uae_erpgulf.uae_erpgulf.verify_token import get_flick_access_token
+from uae_erpgulf.uae_erpgulf.verify_token import get_valid_flick_token
+from uae_erpgulf.uae_erpgulf.attach import get_document_xml
+from uae_erpgulf.uae_erpgulf.attach import get_document_pdf
+
 def send_invoice_to_flick(doc, method=None):
     """
     On Purchase Invoice Submit and after JSON generation then submission to Flick API
@@ -45,16 +48,7 @@ def send_invoice_to_flick(doc, method=None):
         url =  f"{base_url}/v1/{participant_id}/documents"
         # frappe.throw(_(url))
         auth_key = company_doc.custom_xflickauthkey
-        from frappe.utils import get_datetime, now_datetime
-        from datetime import timedelta
-
-        current_time = now_datetime()
-        created_time = get_datetime(company_doc.custom_token_expiry_time)
-
-        if not created_time or current_time >= created_time + timedelta(hours=1):
-            get_flick_access_token(company_doc.name)
-            company_doc.reload()
-        access_token = company_doc.custom_access_token
+        access_token = get_valid_flick_token(company_doc.name)
 
         if not participant_id:
             frappe.throw(_("Participant ID is missing in Company"))
@@ -131,6 +125,7 @@ def generate_and_send_einvoice(doc, method=None):
             data = response_data.get("data", {})
             reporting_status = data.get("reporting_status")
             document_id = data.get("id")
+
         if status_code == 200:
             if isinstance(response_data, dict):
                 if response_data.get("status") in ["success", "processed", "accepted"]:
@@ -138,7 +133,11 @@ def generate_and_send_einvoice(doc, method=None):
             else:
                 invoice_status = "Success"
         # Save status
+        
         doc.db_set("custom_submit_response", response_text)
+        if status_code == 200:
+            get_document_xml("Purchase Invoice",doc.name)
+            get_document_pdf("Purchase Invoice",doc.name)
         doc.db_set("custom_uae_einvoice_status", invoice_status)
         if reporting_status:
             doc.db_set("custom_reporting_status", reporting_status)
@@ -231,16 +230,7 @@ def get_document_status(invoice_name):
             frappe.throw(_("Base URL is missing in Company"))
         url = f"{base_url}/v1/{participant_id}/documents/{document_id}"
 
-        from frappe.utils import get_datetime, now_datetime
-        from datetime import timedelta
-
-        current_time = now_datetime()
-        created_time = get_datetime(company_doc.custom_token_expiry_time)
-
-        if not created_time or current_time >= created_time + timedelta(hours=1):
-            get_flick_access_token(company_doc.name)
-            company_doc.reload()
-        access_token = company_doc.custom_access_token
+        access_token = get_valid_flick_token(company_doc.name)
         if auth_key:
             headers = {
                 "X-Flick-Auth-Key": auth_key

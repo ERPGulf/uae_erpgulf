@@ -1,0 +1,53 @@
+{
+ "app": "erpnext",
+ "charts": [],
+ "content": "[{\"id\":\"OKs_NOo2QG\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Settings\",\"col\":3}}]",
+ "creation": "2026-04-12 18:09:21.611339",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "table",
+ "idx": 0,
+ "indicator_color": "",
+ "is_hidden": 0,
+ "label": "UAE E-Invoice Integration",
+ "link_type": "DocType",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Settings",
+   "link_count": 0,
+   "link_to": "UAE VAT Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-04-12 18:14:54.371533",
+ "modified_by": "Administrator",
+ "module": "uae_erpgulf",
+ "name": "UAE E-Invoice Integration",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "ERPNext Settings",
+ "public": 1,
+ "quick_lists": [],
+ "restrict_to_domain": "",
+ "roles": [],
+ "sequence_id": 5.0,
+ "shortcuts": [
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Settings",
+   "link_to": "UAE VAT Settings",
+   "stats_filter": "[]",
+   "type": "DocType"
+  }
+ ],
+ "title": "UAE E-Invoice Integration",
+ "type": "Workspace"
+}

@@ -4,7 +4,7 @@ import json
 from frappe import _
 from frappe.utils import get_datetime, now_datetime
 from datetime import timedelta
-from uae_erpgulf.uae_erpgulf.verify_token import get_flick_access_token
+from uae_erpgulf.uae_erpgulf.verify_token import get_valid_flick_token
 
 
 @frappe.whitelist(allow_guest=True)
@@ -101,13 +101,7 @@ def register_flick_webhook(company):
     participant_id = company_doc.custom_participant_id
     
 
-    current_time = now_datetime()
-    created_time = get_datetime(company_doc.custom_token_expiry_time)
-
-    if not created_time or current_time >= created_time + timedelta(hours=1):
-        get_flick_access_token(company_doc.name)
-        company_doc.reload()
-    access_token = company_doc.custom_access_token
+    access_token = get_valid_flick_token(company_doc.name)
     if company_doc.custom_xflickauthkey :
         headers = {
             "Content-Type": "application/json",
@@ -177,13 +171,7 @@ def custom_get_subscription(company):
         frappe.throw("Webhook UUID not found. Please create subscription first.")
 
     url = f"{base_url}/v1/webhooks/subscriptions/{uuid}"
-    current_time = now_datetime()
-    created_time = get_datetime(company_doc.custom_token_expiry_time)
-
-    if not created_time or current_time >= created_time + timedelta(hours=1):
-        get_flick_access_token(company_doc.name)
-        company_doc.reload()
-    access_token = company_doc.custom_access_token
+    access_token = get_valid_flick_token(company_doc.name)
     if company_doc.custom_xflickauthkey :
         headers = {
             "X-Flick-Auth-Key": company_doc.custom_xflickauthkey 
@@ -221,13 +209,8 @@ def get_webhook_deliveries(company):
     uuid = company_doc.custom_uuid_of_webhook
 
     url = f"{base_url}/v1/webhooks/subscriptions/{uuid}/deliveries"
-    current_time = now_datetime()
-    created_time = get_datetime(company_doc.custom_token_expiry_time)
-
-    if not created_time or current_time >= created_time + timedelta(hours=1):
-        get_flick_access_token(company_doc.name)
-        company_doc.reload()
-    access_token = company_doc.custom_access_token
+    access_token = get_valid_flick_token(company_doc.name)
+    
     if company_doc.custom_xflickauthkey :
         headers = {
             "X-Flick-Auth-Key": company_doc.custom_xflickauthkey 

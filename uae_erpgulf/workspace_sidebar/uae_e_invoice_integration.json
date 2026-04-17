@@ -1,0 +1,28 @@
+{
+ "app": "uae_erpgulf",
+ "creation": "2026-04-12 18:03:04.898098",
+ "docstatus": 0,
+ "doctype": "Workspace Sidebar",
+ "header_icon": "activity",
+ "idx": 0,
+ "items": [
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "activity",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Setup",
+   "link_to": "Company",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-04-12 18:03:04.898098",
+ "modified_by": "Administrator",
+ "name": "UAE E-Invoice Integration",
+ "owner": "Administrator",
+ "standard": 1,
+ "title": "UAE E-Invoice Integration"
+}
