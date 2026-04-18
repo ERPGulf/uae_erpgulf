@@ -16,7 +16,7 @@
 * Improved API response handling for better reliability and error visibility.
 
 ### **Contributors**
-
+* **Farook K (@fkalpana)** – Added encryption features.
 * **Husna M (@HusnaMa)** – Implemented UAE e-invoicing integration, dashboard, and reporting.
 * **Team Contribution** – Assisted in API validation and testing.
 
