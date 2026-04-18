@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2026-04-17 20:04:32.914512",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-04-17 20:04:52.547682",
+ "modified_by": "Administrator",
+ "module": "uae_erpgulf",
+ "name": "uae-e-invoice-dashbo",
+ "owner": "Administrator",
+ "page_name": "uae-e-invoice-dashbo",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "UAE E-Invoice Dashboard"
+}

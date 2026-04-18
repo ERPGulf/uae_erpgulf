@@ -1,6 +1,7 @@
 import frappe
 from frappe import _
 
+
 def execute(filters=None):
     if not filters:
         filters = {}
@@ -11,6 +12,9 @@ def execute(filters=None):
     return columns, data, None, None
 
 
+# ======================
+# ✅ COLUMNS
+# ======================
 def get_columns():
     return [
         {
@@ -40,32 +44,71 @@ def get_columns():
         },
         {
             'fieldname': 'custom_reporting_status',
-            'label': _('Status'),
+            'label': _('Reporting Status'),
             'fieldtype': 'Data',
             'width': 160
+        },
+        {
+            'fieldname': 'custom_uae_einvoice_status',
+            'label': _('UAE Status'),
+            'fieldtype': 'Data',
+            'width': 180
         }
     ]
 
 
+# ======================
+# ✅ DATA
+# ======================
 def get_data(filters):
     conditions = []
     params = {}
 
-    # Date filter
+    # ✅ Date filter
     if filters.get("dt_from") and filters.get("dt_to"):
         conditions.append("posting_date BETWEEN %(dt_from)s AND %(dt_to)s")
         params["dt_from"] = filters.get("dt_from")
         params["dt_to"] = filters.get("dt_to")
 
-    # Status filter (optimized)
     status = filters.get("status")
 
-    if status == "Not Submitted":
-        conditions.append("(docstatus = 0 OR IFNULL(custom_reporting_status, '') = '')")
+    # ======================
+    # ✅ STATUS LOGIC
+    # ======================
+    if status == "Reported":
+        conditions.append("custom_reporting_status = 'reported'")
+
+    elif status == "Failed":
+        conditions.append("custom_reporting_status = 'failed'")
+
+    elif status == "Success":
+        conditions.append("custom_uae_einvoice_status = 'Success'")
+
+    elif status == "Not Submitted":
+        conditions.append("""
+            (
+                docstatus = 0
+                OR IFNULL(custom_uae_einvoice_status, '') = ''
+                OR custom_uae_einvoice_status = 'Not Submitted'
+            )
+        """)
+
+    elif status == "Cancelled":
+        conditions.append("docstatus = 2")
+
+    # ✅ fallback (in case raw value passed)
     elif status:
-        conditions.append("custom_reporting_status = %(status)s")
+        conditions.append("""
+            (
+                custom_reporting_status = %(status)s
+                OR custom_uae_einvoice_status = %(status)s
+            )
+        """)
         params["status"] = status
 
+    # ======================
+    # ✅ FINAL QUERY
+    # ======================
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 
     query = f"""
@@ -74,7 +117,9 @@ def get_data(filters):
             customer_name,
             posting_date,
             grand_total,
-            custom_reporting_status
+            custom_reporting_status,
+            custom_uae_einvoice_status,
+            docstatus
         FROM `tabSales Invoice`
         WHERE {where_clause}
         ORDER BY posting_date DESC

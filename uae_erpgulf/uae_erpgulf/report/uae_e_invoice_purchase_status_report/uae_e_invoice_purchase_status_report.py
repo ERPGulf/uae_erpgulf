@@ -1,16 +1,20 @@
 import frappe
 from frappe import _
 
+
 def execute(filters=None):
-    filters = filters or {}
+    if not filters:
+        filters = {}
 
     columns = get_columns()
-    data = get_data_and_chart(filters)
+    data = get_data(filters)
 
-    # Return columns, data, message, chart
     return columns, data, None, None
 
 
+# ======================
+# ✅ COLUMNS
+# ======================
 def get_columns():
     return [
         {
@@ -27,7 +31,7 @@ def get_columns():
             'width': 140
         },
         {
-            'fieldname': 'supplier_name',
+            'fieldname': 'supplier',
             'label': _('Supplier'),
             'fieldtype': 'Data',
             'width': 200
@@ -40,53 +44,85 @@ def get_columns():
         },
         {
             'fieldname': 'custom_reporting_status',
-            'label': _('Status'),
+            'label': _('Reporting Status'),
             'fieldtype': 'Data',
             'width': 160
+        },
+        {
+            'fieldname': 'custom_uae_einvoice_status',
+            'label': _('UAE Status'),
+            'fieldtype': 'Data',
+            'width': 180
         }
     ]
 
 
-def get_data_and_chart(filters):
-    dt_from = filters.get("dt_from")
-    dt_to = filters.get("dt_to")
-    status = filters.get("status")
-
+# ======================
+# ✅ DATA
+# ======================
+def get_data(filters):
     conditions = []
     params = {}
 
-    if dt_from and dt_to:
+    # ✅ Date filter
+    if filters.get("dt_from") and filters.get("dt_to"):
         conditions.append("posting_date BETWEEN %(dt_from)s AND %(dt_to)s")
-        params.update({"dt_from": dt_from, "dt_to": dt_to})
+        params["dt_from"] = filters.get("dt_from")
+        params["dt_to"] = filters.get("dt_to")
 
+    status = filters.get("status")
+
+    # ======================
+    # ✅ STATUS LOGIC
+    # ======================
+    if status == "Reported":
+        conditions.append("custom_reporting_status = 'reported'")
+
+    elif status == "Failed":
+        conditions.append("custom_reporting_status = 'failed'")
+
+    elif status == "Success":
+        conditions.append("custom_uae_einvoice_status = 'Success'")
+
+    elif status == "Not Submitted":
+        conditions.append("""
+            (
+                docstatus = 0
+                OR IFNULL(custom_uae_einvoice_status, '') = ''
+                OR custom_uae_einvoice_status = 'Not Submitted'
+            )
+        """)
+
+    elif status == "Cancelled":
+        conditions.append("docstatus = 2")
+
+    # ✅ fallback
+    elif status:
+        conditions.append("""
+            (
+                custom_reporting_status = %(status)s
+                OR custom_uae_einvoice_status = %(status)s
+            )
+        """)
+        params["status"] = status
+
+    # ======================
+    # ✅ FINAL QUERY
+    # ======================
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 
-    # 🚫 NO `.format()` and NO f-string
-    query = """
+    query = f"""
         SELECT
             name,
-            supplier_name,
+            supplier,
             posting_date,
             grand_total,
-            custom_lhdn_status,
+            custom_reporting_status,
+            custom_uae_einvoice_status,
             docstatus
         FROM `tabPurchase Invoice`
-        WHERE """ + where_clause
+        WHERE {where_clause}
+        ORDER BY posting_date DESC
+    """
 
-    invoices = frappe.db.sql(query, params, as_dict=True)
-
-    # status filtering
-    if status == "Not Submitted":
-        filtered = [
-            inv for inv in invoices
-            if inv.get("docstatus") == 0 or not inv.get("custom_reporting_status")
-        ]
-    elif status:
-        filtered = [
-            inv for inv in invoices
-            if inv.get("custom_reporting_status") == status
-        ]
-    else:
-        filtered = invoices
-
-    return filtered
+    return frappe.db.sql(query, params, as_dict=True)

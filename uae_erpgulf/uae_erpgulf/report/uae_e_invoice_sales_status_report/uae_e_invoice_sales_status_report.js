@@ -27,7 +27,7 @@ frappe.query_reports["UAE E-Invoice Sales Status Report"] = {
 			fieldname: "status",
 			label: __("Status"),
 			fieldtype: "Select",
-			options: "\nreported\nfailed\nNot Submitted\n",
+			options: "\nreported\nfailed\nNot Submitted\nCancelled\n",
 			default: "Valid"
 		}
 	],

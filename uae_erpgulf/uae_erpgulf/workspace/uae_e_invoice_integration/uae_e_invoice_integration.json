@@ -1,7 +1,7 @@
 {
  "app": "erpnext",
  "charts": [],
- "content": "[{\"id\":\"OKs_NOo2QG\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Settings\",\"col\":3}}]",
+ "content": "[{\"id\":\"lHwMOZy6Wb\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Detailed Dashboard\",\"col\":3}},{\"id\":\"b-O49yl_Us\",\"type\":\"card\",\"data\":{\"card_name\":\"UAE E-Invoice Status Reports\",\"col\":5}},{\"id\":\"UOgFJ3vHbK\",\"type\":\"card\",\"data\":{\"card_name\":\"Integration\",\"col\":4}},{\"id\":\"-yhGI62-4a\",\"type\":\"quick_list\",\"data\":{\"quick_list_name\":\"New Purchase Invoices\",\"col\":4}},{\"id\":\"aCCIvTph_u\",\"type\":\"quick_list\",\"data\":{\"quick_list_name\":\"New Sales Invoices\",\"col\":4}}]",
  "creation": "2026-04-12 18:09:21.611339",
  "custom_blocks": [],
  "docstatus": 0,
@@ -18,15 +18,54 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Settings",
+   "label": "UAE E-Invoice Status Reports",
+   "link_count": 2,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "UAE E-Invoice Purchase Status Report",
    "link_count": 0,
-   "link_to": "UAE VAT Settings",
+   "link_to": "UAE E-Invoice Purchase Status Report",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "UAE E-Invoice Sales Status Report",
+   "link_count": 0,
+   "link_to": "UAE E-Invoice Sales Status Report",
+   "link_type": "Report",
+   "onboard": 0,
+   "report_ref_doctype": "Sales Invoice",
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Integration",
+   "link_count": 1,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "UAE E-Invoice Setup- Company",
+   "link_count": 0,
+   "link_to": "Company",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
   }
  ],
- "modified": "2026-04-12 18:14:54.371533",
+ "modified": "2026-04-17 20:24:53.231694",
  "modified_by": "Administrator",
  "module": "uae_erpgulf",
  "name": "UAE E-Invoice Integration",
@@ -34,7 +73,18 @@
  "owner": "Administrator",
  "parent_page": "ERPNext Settings",
  "public": 1,
- "quick_lists": [],
+ "quick_lists": [
+  {
+   "document_type": "Sales Invoice",
+   "label": "New Sales Invoices",
+   "quick_list_filter": "[[\"Sales Invoice\",\"custom_reporting_status\",\"like\",\"%reported%\"]]"
+  },
+  {
+   "document_type": "Purchase Invoice",
+   "label": "New Purchase Invoices",
+   "quick_list_filter": "[[\"Purchase Invoice\",\"custom_reporting_status\",\"like\",\"%reported%\"]]"
+  }
+ ],
  "restrict_to_domain": "",
  "roles": [],
  "sequence_id": 5.0,
@@ -42,10 +92,9 @@
   {
    "color": "Grey",
    "doc_view": "List",
-   "label": "Settings",
-   "link_to": "UAE VAT Settings",
-   "stats_filter": "[]",
-   "type": "DocType"
+   "label": "Detailed Dashboard",
+   "link_to": "uae-e-invoice-dashbo",
+   "type": "Page"
   }
  ],
  "title": "UAE E-Invoice Integration",
