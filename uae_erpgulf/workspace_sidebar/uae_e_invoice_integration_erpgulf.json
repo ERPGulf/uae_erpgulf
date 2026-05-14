@@ -1,0 +1,27 @@
+{
+ "app": "uae_erpgulf",
+ "creation": "2026-05-14 10:17:05.113029",
+ "docstatus": 0,
+ "doctype": "Workspace Sidebar",
+ "idx": 0,
+ "items": [
+  {
+   "child": 0,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Workspace",
+   "link_to": "UAE E-Invoice Integration",
+   "link_type": "Workspace",
+   "show_arrow": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-05-14 11:08:11.805211",
+ "modified_by": "Administrator",
+ "module": "uae_erpgulf",
+ "name": "UAE E-Invoice Integration ERPGulf",
+ "owner": "Administrator",
+ "standard": 1,
+ "title": "UAE E-Invoice Integration ERPGulf"
+}

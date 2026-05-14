@@ -1,0 +1,22 @@
+{
+ "app": "uae_erpgulf",
+ "bg_color": "blue",
+ "creation": "2026-05-14 09:44:21.304052",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon_image": "",
+ "icon_type": "Link",
+ "idx": 1,
+ "label": "UAE E-Invoice Integration",
+ "link_to": "UAE E-Invoice Integration ERPGulf",
+ "link_type": "Workspace Sidebar",
+ "logo_url": "/assets/uae_erpgulf/images/ERPGulf.png",
+ "modified": "2026-05-14 11:04:38.699557",
+ "modified_by": "Administrator",
+ "name": "UAE E-Invoice Integration",
+ "owner": "Administrator",
+ "restrict_removal": 0,
+ "roles": [],
+ "standard": 1
+}
