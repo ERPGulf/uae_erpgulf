@@ -45,7 +45,7 @@ def send_invoice_to_flick(doc, method=None):
             "document": json_data
         }
         base_url = company_doc.custom_base_url
-        url =  f"{base_url}/v1/{participant_id}/documents"
+        url =  f"{base_url}/v1/{participant_id}/simulate/incoming"
         # frappe.throw(_(url))
         auth_key = company_doc.custom_xflickauthkey
         access_token = get_valid_flick_token(company_doc.name)
