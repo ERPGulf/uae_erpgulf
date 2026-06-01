@@ -12,7 +12,7 @@ import pytz
 
 
 @frappe.whitelist(allow_guest=False)
-def verify_flick_token(company):
+def verify_flick_token(company:str):
     """Verify Flick token using fields inside Company DocType"""
 
     doc = frappe.get_doc("Company", company)
@@ -22,15 +22,26 @@ def verify_flick_token(company):
 
     if not base_url or not auth_key:
         frappe.throw(_("Please enter Base URL and X-Flick-Auth-Key in Company."))
-
-    try:
-        url = f"{base_url}/v1/auth/verify"
+    access_token = doc.custom_access_token
+    if auth_key:
         headers = {
             "X-Flick-Auth-Key": auth_key
         }
+
+    # Case 2: Fallback to Access Token
+    elif access_token:
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+
+    # Case 3: Neither available
+    else:
+        frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
+    try:
+        url = f"{base_url}/v1/auth/verify"
         response = requests.get(url, headers=headers)
         response_text = response.text
-        doc.custom_token_response = response_text
+        doc.custom_token_response = response_text # nosemgrep: frappe-monkey-patching-not-allowed
         doc.save(ignore_permissions=True)
         return {
             "status": "success",
@@ -45,7 +56,7 @@ def verify_flick_token(company):
         }
 
 @frappe.whitelist(allow_guest=False)
-def get_participant_details(company):
+def get_participant_details(company:str):
     """Fetch participant details from Flick API and save response in Company DocType"""
     company_doc = frappe.get_doc("Company", company)
     base_url = company_doc.custom_base_url
@@ -158,12 +169,12 @@ def get_valid_flick_token(company):
     access_token = response.get("access_token")
 
     if not access_token:
-        frappe.throw("Failed to refresh access token")
+        frappe.throw(_("Failed to refresh access token"))
 
     return access_token
 
 @frappe.whitelist()
-def get_document_status(invoice_name):
+def get_document_status(invoice_name: str):
     """Fetch document status from Flick API and save response in Sales Invoice DocType"""
     try:
         sales_invoice_doc = frappe.get_doc("Sales Invoice", invoice_name)

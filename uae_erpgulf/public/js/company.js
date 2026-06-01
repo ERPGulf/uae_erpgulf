@@ -10,7 +10,12 @@ frappe.ui.form.on("Company", {
                 console.log("Server Response:", r);
 
                 if (r.message?.status === "success") {
-                    frappe.msgprint(_("✔ Token Verified Successfully<br><br>" + r.message.response));
+                    frappe.msgprint({
+                        title: __("Success"),
+                        message: __("✔ Token Verified Successfully") + "<br><br>" + r.message.response,
+                        indicator: "green"
+                    });
+
                 } else {
                     frappe.msgprint(_("❌ Error: " + r.message?.message));
                 }

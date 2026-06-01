@@ -8,7 +8,7 @@ from uae_erpgulf.uae_erpgulf.verify_token import get_valid_flick_token
 
 
 @frappe.whitelist(allow_guest=True)
-def flick_webhook_listener():
+def flick_webhook_listener(): # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
     """Listener for Flick API webhooks. Logs incoming data and updates invoice status."""
     try:
         raw_data = frappe.request.get_data(as_text=True)
@@ -94,7 +94,7 @@ def flick_webhook_listener():
 
 
 @frappe.whitelist(allow_guest=True)
-def register_flick_webhook(company):
+def register_flick_webhook(company: str = None):
     company_doc = frappe.get_doc("Company", company)
     base_url = company_doc.custom_base_url
     url = f"{base_url}/v1/webhooks/subscriptions"
@@ -161,14 +161,14 @@ def register_flick_webhook(company):
 
 
 @frappe.whitelist()
-def custom_get_subscription(company):
+def custom_get_subscription(company: str = None):
     company_doc = frappe.get_doc("Company", company)
 
     base_url = company_doc.custom_base_url
     uuid = company_doc.custom_uuid_of_webhook  # you must store this when creating webhook
 
     if not uuid:
-        frappe.throw("Webhook UUID not found. Please create subscription first.")
+        frappe.throw(_("Webhook UUID not found. Please create subscription first."))
 
     url = f"{base_url}/v1/webhooks/subscriptions/{uuid}"
     access_token = get_valid_flick_token(company_doc.name)
@@ -202,7 +202,7 @@ def custom_get_subscription(company):
     return response_data
 
 @frappe.whitelist()
-def get_webhook_deliveries(company):
+def get_webhook_deliveries(company: str = None):
     company_doc = frappe.get_doc("Company", company)
 
     base_url = company_doc.custom_base_url

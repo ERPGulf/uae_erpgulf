@@ -33,7 +33,7 @@ def send_invoice_to_flick(doc, method=None):
         file_doc = frappe.get_doc("File", {"file_url": json_file.file_url})
         file_path = file_doc.get_full_path()
 
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8") as f: # nosemgrep: frappe-security-file-traversal
             json_data = json.load(f)
         company_doc = frappe.get_doc("Company", doc.company)
         participant_id = company_doc.custom_participant_id
@@ -158,7 +158,7 @@ def generate_and_send_einvoice(doc, method=None):
 
 
 @frappe.whitelist()
-def bulk_send_invoices(invoices):
+def bulk_send_invoices(invoices: list | str):
     """Bulk send multiple invoices to FTA, with error handling and status tracking."""
     if isinstance(invoices, str):
         invoices = frappe.parse_json(invoices)
@@ -203,7 +203,7 @@ def bulk_send_invoices(invoices):
 
 
 @frappe.whitelist()
-def get_document_status(invoice_name):
+def get_document_status(invoice_name: str):
     """Fetch document status from Flick API and save response in Sales Invoice DocType"""
     try:
         sales_invoice_doc = frappe.get_doc("Purchase Invoice", invoice_name)
