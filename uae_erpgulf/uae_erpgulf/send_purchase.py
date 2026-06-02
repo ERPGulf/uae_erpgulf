@@ -92,11 +92,11 @@ def send_invoice_to_flick(doc, method=None):
         frappe.log_error(frappe.get_traceback(), "Flick API Error")
         frappe.throw(_("Error while sending invoice to Flick API."))
 
-from typing import Optional
 
-# nosemgrep: doc parameter is dynamically passed by Frappe hooks/runtime
+from typing import Optional, Union
+from frappe.model.document import Document
 @frappe.whitelist(allow_guest=False)
-def generate_and_send_einvoice(doc, method: Optional[str] = None):
+def generate_and_send_einvoice(doc: Union[Document, str], method: Optional[str] = None):
     """
     Store Success/Failed in custom_uae_einvoice_status
     """
