@@ -59,8 +59,11 @@ frappe.ui.form.on("Company", {
     // ✅ FIXED: Now inside same object
     custom_get_access_token: function (frm) {
 
-        if (!frm.doc.custom_client_id || !frm.doc.custom_client_secret) {
-            frappe.msgprint(_("Please set Client ID and Client Secret"));
+        if (
+            !frm.doc.custom_client_id?.trim() ||
+            !frm.doc.custom_client_secret?.trim()
+        ) {
+            frappe.msgprint(__("Please set Client ID and Client Secret"));
             return;
         }
 
