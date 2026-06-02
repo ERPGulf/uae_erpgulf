@@ -7,7 +7,7 @@ from datetime import timedelta
 from uae_erpgulf.uae_erpgulf.verify_token import get_valid_flick_token
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist(allow_guest=False)
 def flick_webhook_listener(): # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
     """Listener for Flick API webhooks. Logs incoming data and updates invoice status."""
     try:
@@ -93,7 +93,7 @@ def flick_webhook_listener(): # nosemgrep: frappe-semgrep-rules.rules.security.g
 
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist(allow_guest=False)
 def register_flick_webhook(company: str = None):
     company_doc = frappe.get_doc("Company", company)
     base_url = company_doc.custom_base_url
