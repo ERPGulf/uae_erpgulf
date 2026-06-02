@@ -18,6 +18,10 @@ The UAE E-Invoicing Integration app provides a configurable foundation for UAE-c
 
 > Note
 >
+>The integration is designed with a flexible ASP (Accredited Service Provider) architecture. Any UAE-approved ASP provider can be configured and integrated with this app based on customer requirements and future UAE FTA compliance specifications.
+>
+>Currently, Flick is available as the initial test and reference implementation for API connectivity and workflow validation.
+>
 > UAE e-invoicing is currently being rolled out in phases. This implementation is designed to be future-ready, configurable, and aligned with published UAE FTA and PEPPOL-style standards.
 >
 > At the current stage, the structured invoice JSON generation layer is implemented. FTA submission and full clearance workflow will be added in future phases.
@@ -130,6 +134,8 @@ Store token securely
 Reuse token until expiry
 Regenerate token when expired
 
+![alt text](image-2.png)
+
 ### Fetch Participant Details
 
 The participant details flow retrieves business registration information such as:
@@ -155,6 +161,8 @@ Invoice is sent to the configured API provider
 API provider forwards invoice data to the FTA
 Response is received and stored in ERPNext
 
+![alt text](image-3.png)
+
 ## flowchart TD
     A[Create Sales Invoice] --> B[Validate Configuration]
     B --> C[Validate Invoice Data]
@@ -164,6 +172,10 @@ Response is received and stored in ERPNext
     F --> G[Forward to FTA]
     G --> H[Store Response in ERPNext]
 `
+![alt text](image-4.png)
+
+![alt text](image.png)
+
 
 ## Webhooks
 
@@ -178,6 +190,10 @@ Supported webhook events include:
 • Invoice Delivered
 
 Webhook responses can be used to update invoice status inside ERPNext.
+
+![alt text](image-5.png)
+![alt text](image-1.png)
+
 
 ## Output Formats
 
@@ -301,3 +317,8 @@ This project is licensed under the terms specified in the license.txt file.
 Developed and maintained by ERPGulf.
 
 For implementation, customization, or support, please contact the project maintainer.
+
+
+### Contact us for Support
+Email: support@erpgulf.com
+Author: Farook K — https://medium.com/nothing-big

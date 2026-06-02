@@ -1,0 +1,99 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-06-02 13:13:10.573412",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "document_id",
+  "participant_id",
+  "invoice_number",
+  "column_break_tczf",
+  "reporting_status",
+  "exchange_status",
+  "status",
+  "submit_response"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "read_only": 1
+  },
+  {
+   "fieldname": "document_id",
+   "fieldtype": "Data",
+   "label": "Document ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "participant_id",
+   "fieldtype": "Data",
+   "label": "Participant ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "invoice_number",
+   "fieldtype": "Data",
+   "label": "Invoice Number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_tczf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reporting_status",
+   "fieldtype": "Data",
+   "label": "Reporting Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "exchange_status",
+   "fieldtype": "Data",
+   "label": "Exchange Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Data",
+   "label": "Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "submit_response",
+   "fieldtype": "Long Text",
+   "label": "Submit Response",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-02 13:29:41.739557",
+ "modified_by": "Administrator",
+ "module": "uae_erpgulf",
+ "name": "UAE E-invoicing success log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

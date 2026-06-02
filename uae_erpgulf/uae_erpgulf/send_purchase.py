@@ -7,7 +7,7 @@ from uae_erpgulf.uae_erpgulf.purchase_json  import send_invoice_json
 from uae_erpgulf.uae_erpgulf.verify_token import get_valid_flick_token
 from uae_erpgulf.uae_erpgulf.attach import get_document_xml
 from uae_erpgulf.uae_erpgulf.attach import get_document_pdf
-
+from uae_erpgulf.uae_erpgulf.validation import success_log
 def send_invoice_to_flick(doc, method=None):
     """
     On Purchase Invoice Submit and after JSON generation then submission to Flick API
@@ -148,6 +148,24 @@ def generate_and_send_einvoice(doc: Union[Document, str], method: Optional[str] 
             doc.db_set("custom_document_id", document_id)
         frappe.db.commit()
 
+        exchange_status = None
+
+        if isinstance(response_data, dict):
+            data = response_data.get("data", {})
+            exchange_status = data.get("exchange_status")
+        if status_code == 200:
+            company_doc = frappe.get_doc("Company", doc.company)
+            
+            success_log(
+                title="UAE E-Invoice Submitted Successfully",
+                document_id=document_id,
+                participant_id=company_doc.custom_participant_id,
+                invoice_number=doc.name,
+                reporting_status=reporting_status,
+                exchange_status=exchange_status,
+                status=invoice_status,
+                submit_response=response_text,
+            )
         frappe.msgprint(
             _("Flick Response Stored. Status: {0}").format(invoice_status)
         )
