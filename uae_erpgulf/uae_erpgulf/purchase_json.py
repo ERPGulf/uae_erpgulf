@@ -775,7 +775,17 @@ def build_uae_invoice_json(invoice_number):
 
     
     issue_date = sales_invoice_doc.posting_date
-
+    document_references = {}
+    if sales_invoice_doc.is_return and sales_invoice_doc.return_against:
+        original_invoice = frappe.get_doc("Purchase Invoice", sales_invoice_doc.return_against)
+        document_references = {
+            "billing_reference": {
+                "invoice_document_reference": {
+                    "id": original_invoice.name,
+                    "issue_date": str(original_invoice.posting_date)
+                }
+            }
+        }
     invoice = {
         "document_identifier": sales_invoice_doc.name,
         "issue_date": str(sales_invoice_doc.posting_date),
@@ -796,13 +806,7 @@ def build_uae_invoice_json(invoice_number):
         #     "sales_order_id": "SO-001/23"
         # },
 
-        "document_references": {
-            
-            "invoice_document_reference": {
-                "id": str(invoice_number),
-                "issue_date": str(sales_invoice_doc.posting_date)
-            }
-        },
+        "document_references": document_references,
         # "other_references": {
         #     "despatch_document_reference": "DESP-2025-001",
         #     "receipt_document_reference": "REC-2025-001",
