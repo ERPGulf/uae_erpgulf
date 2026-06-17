@@ -3,31 +3,31 @@ frappe.ui.form.on('Sales Invoice', {
         const fieldDescriptions = {
             'custom_vat_category': {
                 text: 'Defines the VAT treatment for the supply. Select the category that matches the nature of the goods or service being invoiced.',
-                url: 'https://docs.claudion.com/Claudion-Docs/configUAE'
+                url: 'https://docs.claudion.com/Claudion-Docs/Field%20Reference'
             },
             'custom_frequency_billing_code_list': {
                 text: 'Sets the billing cycle for recurring or continuous supply invoices. If none of the standard codes apply, select OTH and fill in the Invoice Note field. When OTH is selected, the Invoice Note field is mandatory.',
-                url: 'https://docs.claudion.com/Claudion-Docs/configUAE'
+                url: 'https://docs.claudion.com/Claudion-Docs/Field%20Reference'
             },
             'custom_invoice_note': {
                 text: 'Free-text field for extra information on the invoice. Optional in most cases, but required when Frequency Billing Code is OTH.',
-                url: 'https://docs.claudion.com/Claudion-Docs/configUAE'
+                url: 'https://docs.claudion.com/Claudion-Docs/Field%20Reference'
             },
             'custom_invoice_transaction_type_code': {
                 text: "A flag-based code where each position activates a special transaction type. Set a position to '1' to enable it; leave as 'X' if not applicable. Multiple flags can be combined.",
-                url: 'https://docs.claudion.com/Claudion-Docs/configUAE'
+                url: 'https://docs.claudion.com/Claudion-Docs/Field%20Reference'
             },
             'custom_invoice_out_of_scope_of_tax': {
                 text: 'Check this if the invoice is out of scope of VAT. This means the transaction is not subject to UAE VAT regulations.',
-                url: 'https://docs.claudion.com/Claudion-Docs/configUAE'
+                url: 'https://docs.claudion.com/Claudion-Docs/Field%20Reference'
             },
             'custom_credit_note_related_to_goods_or_services_out_of_scope': {
                 text: 'Check this if the credit note is related to goods or services that are out of scope of VAT.',
-                url: 'https://docs.claudion.com/Claudion-Docs/configUAE'
+                url: 'https://docs.claudion.com/Claudion-Docs/Field%20Reference'
             },
             'custom_credit_note_reason_code': {
                 text: 'Specifies the reason for issuing the credit note. Select the appropriate code that reflects the purpose of the credit note (e.g., cancellation, discount, return of goods).',
-                url: 'https://docs.claudion.com/Claudion-Docs/configUAE'
+                url: 'https://docs.claudion.com/Claudion-Docs/Field%20Reference'
             }
         };
 
