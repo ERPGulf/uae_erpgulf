@@ -248,9 +248,10 @@ def bulk_send_invoices(invoices: list | str):
             # If invoice is Draft → Submit first
             if doc.docstatus == 0 and company_doc.custom_uae_einvoice_enabled == 1:
                 doc.submit()
+                success.append(invoice)
 
             # If invoice is Submitted → Send to FTA
-            if doc.docstatus == 1 and company_doc.custom_uae_einvoice_enabled == 1:
+            elif doc.docstatus == 1 and company_doc.custom_uae_einvoice_enabled == 1:
                 generate_and_send_einvoice(doc)
                 success.append(invoice)
 
