@@ -463,6 +463,19 @@ def get_item_data(sales_invoice_doc, vat_rate):
         else:
             vat_category = sales_invoice_doc.custom_vat_category
             tax_rate = vat_rate
+        
+
+
+        if item.item_tax_template:
+            exemption_reason = (
+                item_tax_template.custom_vat_exemption_reason_code
+            )
+            rcm_nature_code = (
+                item_tax_template.custom_rcm_nature_code
+            )
+        else:
+            exemption_reason = sales_invoice_doc.custom_vat_exemption_reason_code
+            rcm_nature_code = sales_invoice_doc.custom_rcm_nature_code
 
         tax = net * Decimal(tax_rate) / Decimal(100)
         total_tax += tax
@@ -486,7 +499,13 @@ def get_item_data(sales_invoice_doc, vat_rate):
             "base_quantity": "1"
             # "line_extension_amount": get_item_line_extension_amount(item)
         }
+        vat_category_code = get_vat_category_code(vat_category)
 
+        if vat_category_code == "E" and exemption_reason:
+            invoice_line["vat_exemption_reason_code"] = exemption_reason.split(" - ")[0]
+
+        elif vat_category_code == "AE" and rcm_nature_code:
+            invoice_line["rcm_nature_code"] = rcm_nature_code.split(" - ")[0]
         invoice["invoice_lines"].append(invoice_line)
 
     return invoice, total_net, total_tax
@@ -803,28 +822,26 @@ def build_uae_invoice_json(invoice_number):
 
     
     issue_date = sales_invoice_doc.posting_date
-    document_references = {}
+    
+    document_references = []
 
     if sales_invoice_doc.is_return:
         if sales_invoice_doc.return_against:
-            original_invoice = frappe.get_doc("Sales Invoice", sales_invoice_doc.return_against)
-            document_references = {
-                "billing_reference": {
-                    "invoice_document_reference": {
-                        "id": original_invoice.name,
-                        "issue_date": str(original_invoice.posting_date)
-                    }
-                }
-            }
+            original_invoice = frappe.get_doc(
+                "Sales Invoice",
+                sales_invoice_doc.return_against,
+            )
+
+            document_references.append({
+                "id": original_invoice.name,
+                "issue_date": str(original_invoice.posting_date),
+            })
+
         elif sales_invoice_doc.custom_return_against_for_uae_einvoice:
-            document_references = {
-                "billing_reference": {
-                    "invoice_document_reference": {
-                        "id": sales_invoice_doc.custom_return_against_for_uae_einvoice,
-                        "issue_date": ""
-                    }
-                }
-            }
+            document_references.append({
+                "id": sales_invoice_doc.custom_return_against_for_uae_einvoice,
+                "issue_date": "",
+            })
     invoice = {
         "document_identifier": sales_invoice_doc.name,
         "issue_date": str(sales_invoice_doc.posting_date),

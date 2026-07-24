@@ -21,8 +21,8 @@ def verify_flick_token(company:str):
     base_url = doc.custom_base_url
     auth_key = doc.custom_xflickauthkey
 
-    if not base_url or not auth_key:
-        frappe.throw(_("Please enter Base URL and X-Flick-Auth-Key in Company."))
+    if not base_url :
+        frappe.throw(_("Please enter Base URL ."))
     access_token = doc.custom_access_token
     if auth_key:
         headers = {
