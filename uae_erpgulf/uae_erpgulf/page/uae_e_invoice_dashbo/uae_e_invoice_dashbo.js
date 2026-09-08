@@ -46,8 +46,8 @@ function render_cards() {
 	const doctypes = ["Sales Invoice", "Purchase Invoice"];
 
 	const sections = [
-		{ title: "Reported", field: "custom_reporting_status", value: "reported", color: "#28a745" },
-		{ title: "Success", field: "custom_uae_einvoice_status", value: "Success", color: "#17a2b8" },
+		{ title: "Reported From FTA", field: "custom_reporting_status", value: "reported", color: "#28a745" },
+		{ title: "Success From ASP", field: "custom_uae_einvoice_status", value: "Success", color: "#17a2b8" },
 		{ title: "Failed", field: "custom_reporting_status", value: "failed", color: "#dc3545" },
 		{ title: "Not Submitted", field: "custom_uae_einvoice_status", value: "Not Submitted", color: "#ffc107" },
 		{ title: "Cancelled", field: "docstatus", value: 2, color: "#6c757d" }
