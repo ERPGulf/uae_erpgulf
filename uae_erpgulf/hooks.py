@@ -259,7 +259,8 @@ doctype_js = {
     "Purchase Invoice":["public/js/purchase.js",
                         "public/js/tooltip_pos.js",
                         "public/js/badges_purchase.js"
-                ]
+                ],
+    "E-Invoice Provider Settings": "public/js/e_invoice_provider_settings.js"
     
 }
 doctype_list_js = {
@@ -290,6 +291,16 @@ scheduler_events = {
             "uae_erpgulf.uae_erpgulf.webhook.update_webhook_logs"
         ]
     }
+}
+
+# Provider registry - maps a Provider name (as picked on E-Invoice Provider
+# Settings) to its adapter class. Add one line here for every new ASP that
+# has a real adapter under providers/<name>/adapter.py - nothing else in
+# the app needs to change. See providers/__init__.py (get_adapter) and
+# providers/base.py (BaseAdapter) for how this is used.
+uae_einvoice_providers = {
+    "Flick Network L.L.C": "uae_erpgulf.uae_erpgulf.providers.flick.adapter.FlickAdapter",
+    "Marmin AI Software Design LLC": "uae_erpgulf.uae_erpgulf.providers.marmin.adapter.MarminAdapter",
 }
 
 import uae_erpgulf.overrides.return_validation

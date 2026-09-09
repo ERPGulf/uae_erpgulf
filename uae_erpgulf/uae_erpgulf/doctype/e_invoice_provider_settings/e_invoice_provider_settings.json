@@ -1,0 +1,318 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-09-08 14:49:06.016250",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "company",
+  "provider",
+  "enabled",
+  "auth_type",
+  "column_break_trrs",
+  "trn",
+  "participant_id",
+  "base_url",
+  "section_oauth2",
+  "client_id",
+  "client_secret",
+  "scope",
+  "section_api_key",
+  "api_key",
+  "api_secret",
+  "section_basic",
+  "username",
+  "password",
+  "section_break_jeqs",
+  "certificate",
+  "private_key",
+  "certificate_passphrase",
+  "section_webhook",
+  "webhook_secret",
+  "webhook_url",
+  "webhook_uuid",
+  "section_endpoint",
+  "base_url_override",
+  "status_section",
+  "last_test_status",
+  "last_test_on",
+  "diagnostics_tab",
+  "section_diagnostics",
+  "last_access_token",
+  "last_test_response",
+  "last_webhook_subscribe_response",
+  "column_break_wnft",
+  "last_participant_response",
+  "last_webhook_subscription_response",
+  "last_webhook_logs_response"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "label": "Provider",
+   "options": "BDO Digital Solutions FZ-LLC\nComarch Middle East FZ LLC\nComplyance Electronics L.L.C\nCovoro AI \u2013 FZCO\nCygnet Digital IT Solutions L.L.C\nDefmacro Software DMCC (ClearTax)\nDeloitte & Touche \u2013 M E\nDP World Digital GCC FZE\nEDICOM Middle East Services\nFlick Network L.L.C\nFynamics Techno Solutions \u2013 FZCO\nInfinite IT Solutions DMCC\nInformation Dynamics LLC\nInvoiceNow biz \u2013 F.Z.C\nInvoiceQ For Information Technology Limited\nKGRN Chartered Accountants\nMarmin AI Software Design LLC\nMicrovista Technologies LLC\nMoore JFC Consulting LLC\nOrchida Soft Computer Systems LLC\nOxinus Holding Limited\nPagero Gulf FZ-LLC\nSAP Middle East & North Africa LLC\nSkill Quotient Technologies\nSpendconsole FZ LLC\nSunTec (Xelerate) Business Solutions DMCC\nSuntech Business Solutions DMCC\nTally Software Solutions FZCO\nTAXILLA FINOPS 360 \u2013 FZCO\nTaxlabs.ai\nTechventures Information Technology Services\nTronStride FZC"
+  },
+  {
+   "default": "0",
+   "description": "One row per company can be enabled at a time. Enabling this one writes it as the active provider on E-Invoice Settings.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "description": "Set automatically for the chosen Provider. Not picked by hand.",
+   "fieldname": "auth_type",
+   "fieldtype": "Select",
+   "label": "Auth Type",
+   "options": "oauth2\napi_key\nbasic\ncertificate"
+  },
+  {
+   "fieldname": "column_break_trrs",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "trn",
+   "fieldtype": "Data",
+   "label": "TRN"
+  },
+  {
+   "description": "e.g. 0235:100xxxxxxxxxxx",
+   "fieldname": "participant_id",
+   "fieldtype": "Data",
+   "label": "Participant ID (Peppol)"
+  },
+  {
+   "depends_on": "eval:doc.auth_type==\"oauth2\"",
+   "fieldname": "client_id",
+   "fieldtype": "Data",
+   "label": "Client ID"
+  },
+  {
+   "depends_on": "eval:doc.auth_type==\"oauth2\"",
+   "fieldname": "section_oauth2",
+   "fieldtype": "Section Break",
+   "label": "Auth: OAuth2"
+  },
+  {
+   "depends_on": "eval:doc.auth_type==\"oauth2\"",
+   "fieldname": "client_secret",
+   "fieldtype": "Password",
+   "label": "Client Secret"
+  },
+  {
+   "depends_on": "eval:doc.auth_type==\"oauth2\"",
+   "fieldname": "scope",
+   "fieldtype": "Data",
+   "label": "Scope"
+  },
+  {
+   "depends_on": "eval:doc.auth_type==\"api_key\"",
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "API Key"
+  },
+  {
+   "depends_on": "eval:doc.auth_type==\"api_key\"",
+   "fieldname": "api_secret",
+   "fieldtype": "Password",
+   "label": "API Secret"
+  },
+  {
+   "depends_on": "eval:doc.auth_type==\"api_key\"",
+   "fieldname": "section_api_key",
+   "fieldtype": "Section Break",
+   "label": "Auth: API Key"
+  },
+  {
+   "depends_on": "eval:doc.auth_type==\"basic\"",
+   "fieldname": "username",
+   "fieldtype": "Data",
+   "label": "Username"
+  },
+  {
+   "depends_on": "eval:doc.auth_type==\"basic\"",
+   "fieldname": "password",
+   "fieldtype": "Password",
+   "label": "Password"
+  },
+  {
+   "depends_on": "eval:doc.auth_type==\"basic\"",
+   "fieldname": "section_basic",
+   "fieldtype": "Section Break",
+   "label": "Auth: Basic"
+  },
+  {
+   "fieldname": "section_break_jeqs",
+   "fieldtype": "Section Break"
+  },
+  {
+   "depends_on": "eval:doc.auth_type==\"certificate\"",
+   "fieldname": "certificate",
+   "fieldtype": "Attach",
+   "label": "Certificate"
+  },
+  {
+   "depends_on": "eval:doc.auth_type==\"certificate\"",
+   "fieldname": "private_key",
+   "fieldtype": "Password",
+   "label": "Private Key"
+  },
+  {
+   "depends_on": "eval:doc.auth_type==\"certificate\"",
+   "fieldname": "certificate_passphrase",
+   "fieldtype": "Password",
+   "label": "Certificate Passphrase"
+  },
+  {
+   "fieldname": "webhook_secret",
+   "fieldtype": "Password",
+   "label": "Webhook Secret"
+  },
+  {
+   "fieldname": "webhook_url",
+   "fieldtype": "Data",
+   "label": "Webhook URL"
+  },
+  {
+   "fieldname": "section_webhook",
+   "fieldtype": "Section Break",
+   "label": "Callbacks"
+  },
+  {
+   "description": "Leave blank. Only for a provider whose URL genuinely differs from the adapter's default \u2014 logs a warning when set.",
+   "fieldname": "base_url_override",
+   "fieldtype": "Data",
+   "label": "Base URL Override"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_endpoint",
+   "fieldtype": "Section Break",
+   "label": "Endpoint"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "status_section",
+   "fieldtype": "Section Break",
+   "label": "Status"
+  },
+  {
+   "default": "Never",
+   "fieldname": "last_test_status",
+   "fieldtype": "Select",
+   "label": "Last Test Status",
+   "options": "Never\nPassed\nFailed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_test_on",
+   "fieldtype": "Datetime",
+   "label": "Last Test On",
+   "read_only": 1
+  },
+  {
+   "description": "e.g. https://sb-ae-api.flick.network. Temporary home until this lives in adapter code instead.",
+   "fieldname": "base_url",
+   "fieldtype": "Data",
+   "label": "Base URL"
+  },
+  {
+   "description": "Filled in once the webhook subscription is created with the provider.",
+   "fieldname": "webhook_uuid",
+   "fieldtype": "Data",
+   "label": "Webhook UUID"
+  },
+  {
+   "fieldname": "diagnostics_tab",
+   "fieldtype": "Tab Break",
+   "label": "Diagnostics"
+  },
+  {
+   "fieldname": "section_diagnostics",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "last_test_response",
+   "fieldtype": "Long Text",
+   "label": "Last Test Response",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_webhook_subscribe_response",
+   "fieldtype": "Long Text",
+   "label": "Last Webhook Subscribe Response",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_webhook_logs_response",
+   "fieldtype": "Long Text",
+   "label": "Last Webhook Logs Response",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_wnft",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_participant_response",
+   "fieldtype": "Long Text",
+   "label": "Last Participant Response",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_webhook_subscription_response",
+   "fieldtype": "Long Text",
+   "label": "Last Webhook Subscription Response",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_access_token",
+   "fieldtype": "Small Text",
+   "label": "Last Access Token",
+   "no_copy": 1,
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-09 13:08:44.358370",
+ "modified_by": "Administrator",
+ "module": "uae_erpgulf",
+ "name": "E-Invoice Provider Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

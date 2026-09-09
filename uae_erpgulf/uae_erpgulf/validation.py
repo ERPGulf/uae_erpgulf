@@ -3,19 +3,38 @@ import frappe
 from frappe import _
 
 def validate_accredited_service_provider(doc, method=None):
+    """Runs before a Sales/Purchase Invoice is submitted. Makes sure the
+    company actually has e-invoicing set up for whichever provider it has
+    selected, before letting the invoice go through.
+
+    No provider name is checked here on purpose - any provider works the
+    same way. (This used to hardcode a check against "flick.network" and
+    "Flick Network L.L.C" directly in this shared file - that's exactly
+    the kind of provider-specific check that doesn't belong here, and it's
+    no longer needed now that each E-Invoice Provider Settings row already
+    ties one provider to its own base URL.)
+    """
     company_doc = frappe.get_doc("Company", doc.company)
 
-    if (
-        company_doc.custom_base_url
-        and "flick.network" in company_doc.custom_base_url.lower()
-        and company_doc.custom_accredited_service_providers != "Flick Network L.L.C"
-    ):
+    if not company_doc.custom_uae_einvoice_enabled:
+        return
+
+    provider = company_doc.custom_accredited_service_providers
+    if not provider:
         frappe.throw(_(
-            "Selected Accredited Service Provider must be Flick Network L.L.C for flick api integration."
-        ))
+            "Select an Accredited Service Provider on {0} before submitting e-invoices."
+        ).format(doc.company))
 
+    has_settings = frappe.db.exists(
+        "E-Invoice Provider Settings",
+        {"company": doc.company, "provider": provider, "enabled": 1},
+    )
+    if not has_settings:
+        frappe.throw(_(
+            "No enabled E-Invoice Provider Settings found for {0} under {1}. "
+            "Set up its credentials before submitting e-invoices."
+        ).format(provider, doc.company))
 
-    
     # Validation 1: If Invoice out of scope of tax is checked,
     # VAT Category must be "O - Not subject to VAT"
 

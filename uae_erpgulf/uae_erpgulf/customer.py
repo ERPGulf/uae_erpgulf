@@ -1,28 +1,15 @@
 import frappe
-import http.client
-import json
-import requests
-from frappe import _
+
+from uae_erpgulf.uae_erpgulf.provider_settings import get_active_provider_settings
+from uae_erpgulf.uae_erpgulf.providers import get_adapter
+
 
 @frappe.whitelist()
-def custom_lookup_peppol_id_of_participant(company:str,peppol_id:str):
-    """Lookup PEPPOL ID using Flick API and return details"""
+def custom_lookup_peppol_id_of_participant(company: str, peppol_id: str):
+    """Lookup PEPPOL ID using whichever ASP this company is active on."""
     try:
-        url = f"https://sb-ae-api.flick.network/v1/peppol/lookup/{peppol_id}"
-        company_doc = frappe.get_doc("Company", company)
-
-        auth_key = company_doc.custom_xflickauthkey
-        headers = {
-            "X-Flick-Auth-Key": "YOUR_SECRET_TOKEN"
-        }
-
-        response = requests.get(url, headers=headers)
-
-        if response.status_code == 200:
-            return response.json()
-            
-        else:
-            frappe.throw(f"API Error: {response.text}")
+        settings = get_active_provider_settings(company)
+        return get_adapter(settings).lookup_peppol_id(peppol_id)
 
     except Exception as e:
         frappe.log_error(str(e), "PEPPOL Lookup Error")

@@ -2,16 +2,18 @@ import frappe
 import requests
 import json
 from frappe import _
-from frappe.utils import get_datetime, now_datetime
-from datetime import timedelta
-from uae_erpgulf.uae_erpgulf.verify_token import get_valid_flick_token
+from uae_erpgulf.uae_erpgulf.provider_settings import (
+    get_settings_for_action,
+    save_last_response,
+)
+from uae_erpgulf.uae_erpgulf.providers import get_adapter
 
 
 @frappe.whitelist(allow_guest=True)# nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
-def flick_webhook_listener(): 
+def flick_webhook_listener():
     """Listener for Flick API webhooks. Logs incoming data and updates invoice status."""
     try:
-        
+
         raw_data = frappe.request.get_data(as_text=True)
         data = json.loads(raw_data)
 
@@ -92,171 +94,68 @@ def flick_webhook_listener():
             "processed": False
         }
 
-import frappe
 
 def update_webhook_logs():
-    companies = frappe.get_all(
-        "Company",
-        filters={
-            "custom_uuid_of_webhook": ["is", "set"]
-        },
-        pluck="name"
+    """Scheduler poll (see hooks.py cron). Refreshes each enabled provider's
+    webhook delivery log. NOTE: this only refreshes the log - it doesn't yet
+    reconcile invoice status from what's polled, so the webhook listener
+    above is still the only path that updates invoice status today. Making
+    the poll a real fallback (not just a log refresh) is tracked as a
+    follow-up in multi-asp-migration-plan.md, not done in this pass."""
+    rows = frappe.get_all(
+        "E-Invoice Provider Settings",
+        filters={"enabled": 1, "webhook_uuid": ["is", "set"]},
+        fields=["name", "company"],
     )
 
-    for company in companies:
+    for row in rows:
         try:
-            get_webhook_deliveries(company)
+            get_webhook_deliveries(row.company)
         except Exception:
             frappe.log_error(
                 frappe.get_traceback(),
-                f"Webhook Log Update Failed - {company}"
+                f"Webhook Log Update Failed - {row.company}"
             )
 
 @frappe.whitelist(allow_guest=False)
-def register_flick_webhook(company: str = None):
-    company_doc = frappe.get_doc("Company", company)
-    base_url = company_doc.custom_base_url
-    url = f"{base_url}/v1/webhooks/subscriptions"
-    participant_id = company_doc.custom_participant_id
-    
+def register_flick_webhook(company: str = None, provider_settings: str = None):
+    """Register (or re-register) the webhook subscription for a specific
+    row when one is given (that's what the Provider Settings form's own
+    button passes), otherwise the active enabled row for the given company
+    (older Company-button callers). Despite the name (kept for backward
+    compatibility), this now works for any provider whose adapter
+    implements register_webhook() - today that's Flick only; Marmin's is a
+    documented "not implemented yet" stub until we have its webhook docs
+    page.
 
-    access_token = get_valid_flick_token(company_doc.name)
-    if company_doc.custom_xflickauthkey :
-        headers = {
-            "Content-Type": "application/json",
-            "X-Flick-Auth-Key": company_doc.custom_xflickauthkey 
-        }
+    Saves a REDACTED copy of the response on Last Webhook Subscribe
+    Response - this response contains the actual webhook secret (already
+    saved properly in the Webhook Secret password field by the adapter),
+    so it gets blanked out here before anything touches a plain-text field.
+    """
+    settings = get_settings_for_action(company, provider_settings)
+    result = get_adapter(settings).register_webhook()
 
-    # Case 2: Fallback to Access Token
-    elif access_token:
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {access_token}"
-        }
+    save_last_response(settings, "last_webhook_subscribe_response", result)
 
-    # Case 3: Neither available
-    else:
-        frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
-        
-    endpoint = frappe.utils.get_url(
-        "/api/method/uae_erpgulf.uae_erpgulf.webhook.flick_webhook_listener"
-        )
-    payload = {
-        "name": "ERPNext Webhook",
-        "endpoint": endpoint,
-        "event_types": [
-        "document.received",
-        "document.exchange.delivered",
-        "document.exchange.failed",
-        "document.reporting.reported",
-        "document.reporting.failed",
-        "document.completed",
-        "document.failed"
-            ],
-        "participant_ids": [participant_id]
-    }
-
-    response = requests.post(url, headers=headers, json=payload)
-
-    # Log response for debugging
-    # frappe.log_error(
-    #     title="Webhook Registration Response",
-    #     message=response.text
-    # )
-    try:
-        response_data = response.json()
-    except Exception:
-        response_data = {"raw_response": response.text}
-
-    company_doc.custom_webhook_subscription_response = json.dumps(response_data)
-    if response_data.get("data") and response_data["data"].get("uuid"):
-        company_doc.custom_uuid_of_webhook = response_data["data"]["uuid"]
-    if response_data.get("data") and response_data["data"].get("secret"):
-        company_doc.custom_secret_of_webhook = response_data["data"]["secret"]
-    company_doc.save(ignore_permissions=True)
-
-    return response.json()
+    return result
 
 
 @frappe.whitelist()
-def custom_get_subscription(company: str = None):
-    company_doc = frappe.get_doc("Company", company)
+def custom_get_subscription(company: str = None, provider_settings: str = None):
+    settings = get_settings_for_action(company, provider_settings)
+    result = get_adapter(settings).get_subscription()
 
-    base_url = company_doc.custom_base_url
-    uuid = company_doc.custom_uuid_of_webhook  # you must store this when creating webhook
+    save_last_response(settings, "last_webhook_subscription_response", result)
 
-    if not uuid:
-        frappe.throw(_("Webhook UUID not found. Please create subscription first."))
+    return result
 
-    url = f"{base_url}/v1/webhooks/subscriptions/{uuid}"
-    access_token = get_valid_flick_token(company_doc.name)
-    if company_doc.custom_xflickauthkey :
-        headers = {
-            "X-Flick-Auth-Key": company_doc.custom_xflickauthkey 
-        }
-
-    # Case 2: Fallback to Access Token
-    elif access_token:
-        headers = {
-            "Authorization": f"Bearer {access_token}"
-        }
-
-    # Case 3: Neither available
-    else:
-        frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
-    
-
-    response = requests.get(url, headers=headers)
-
-    try:
-        response_data = response.json()
-    except Exception:
-        response_data = {"raw_response": response.text}
-
-    company_doc.custom_get_subscription_response = json.dumps(response_data)
-    company_doc.save(ignore_permissions=True)
-
-    return response_data
 
 @frappe.whitelist()
-def get_webhook_deliveries(company: str = None):
-    company_doc = frappe.get_doc("Company", company)
+def get_webhook_deliveries(company: str = None, provider_settings: str = None):
+    settings = get_settings_for_action(company, provider_settings)
+    result = get_adapter(settings).get_webhook_deliveries()
 
-    base_url = company_doc.custom_base_url
-    uuid = company_doc.custom_uuid_of_webhook
+    save_last_response(settings, "last_webhook_logs_response", result)
 
-    url = f"{base_url}/v1/webhooks/subscriptions/{uuid}/deliveries"
-    access_token = get_valid_flick_token(company_doc.name)
-    
-    if company_doc.custom_xflickauthkey :
-        headers = {
-            "X-Flick-Auth-Key": company_doc.custom_xflickauthkey 
-        }
-
-    # Case 2: Fallback to Access Token
-    elif access_token:
-        headers = {
-            "Authorization": f"Bearer {access_token}"
-        }
-
-    # Case 3: Neither available
-    else:
-        frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
-    
-    response = requests.get(url, headers=headers)
-
-    try:
-        response_data = response.json()
-    except Exception:
-        response_data = {"raw_response": response.text}
-
-    frappe.db.set_value(
-        "Company",
-        company_doc.name,
-        "custom_webhook_delivery_logs",
-        json.dumps(response_data),
-        update_modified=False
-    )
-    # company_doc.save(ignore_permissions=True)
-
-    return response_data
+    return result

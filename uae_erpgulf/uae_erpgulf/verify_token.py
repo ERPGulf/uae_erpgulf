@@ -1,256 +1,109 @@
-
+import json
 
 import frappe
-import http.client
-import json
-import requests
-# from pydoc import doc
 from frappe import _
-# from datetime import now_datetime
-from frappe.utils import now_datetime 
-import pytz
+
+from uae_erpgulf.uae_erpgulf.provider_settings import (
+	get_active_provider_settings,
+	get_settings_for_action,
+	save_last_response,
+)
+from uae_erpgulf.uae_erpgulf.providers import get_adapter
 
 
-
-@frappe.whitelist(allow_guest=False)
-def verify_flick_token(company:str):
-    """Verify Flick token using fields inside Company DocType"""
-
-    doc = frappe.get_doc("Company", company)
-
-    base_url = doc.custom_base_url
-    auth_key = doc.custom_xflickauthkey
-
-    if not base_url :
-        frappe.throw(_("Please enter Base URL ."))
-    access_token = doc.custom_access_token
-    if auth_key:
-        headers = {
-            "X-Flick-Auth-Key": auth_key
-        }
-
-    # Case 2: Fallback to Access Token
-    elif access_token:
-        headers = {
-            "Authorization": f"Bearer {access_token}"
-        }
-
-    # Case 3: Neither available
-    else:
-        frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
-    try:
-        url = f"{base_url}/v1/auth/verify"
-        response = requests.get(url, headers=headers)
-       
-        try:
-            response_text = json.dumps(response.json())  # compact clean JSON string
-        except Exception:
-            response_text = response.text 
-        doc.custom_token_response = response_text # nosemgrep: frappe-monkey-patching-not-allowed
-        doc.save(ignore_permissions=True)
-        return {
-            "status": "success",
-            "response": response_text
-        }
-
-    except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Flick Verify Error")
-        return {
-            "status": "error",
-            "message": str(e)
-        }
-
-@frappe.whitelist(allow_guest=False)
-def get_participant_details(company:str):
-    """Fetch participant details from Flick API and save response in Company DocType"""
-    company_doc = frappe.get_doc("Company", company)
-    base_url = company_doc.custom_base_url
-    if not base_url:
-        frappe.throw(_("Please enter Base URL and X-Flick-Auth-Key in Company."))
-    participant_id = company_doc.custom_participant_id
-    auth_key = company_doc.custom_xflickauthkey
-    if not participant_id:
-        frappe.throw(_("Participant ID is missing in Company"))
-    
-    url = f"{base_url}/v1/participants/{participant_id}"
-    access_token = get_valid_flick_token(company_doc.name)
-    if auth_key:
-        headers = {
-            "X-Flick-Auth-Key": auth_key
-        }
-
-    # Case 2: Fallback to Access Token
-    elif access_token:
-        headers = {
-            "Authorization": f"Bearer {access_token}"
-        }
-
-    # Case 3: Neither available
-    else:
-        frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
-
-    response = requests.get(url, headers=headers)
-    data = response.json()
-    company_doc.custom_participant_details_response = json.dumps(data)
-    company_doc.save(ignore_permissions=True)
-    return {
-        "status": "success",
-        "response": data
-    }
-
-
-
-from frappe.utils import get_datetime, now_datetime
-from datetime import timedelta
+def get_auth_headers(settings, extra=None):
+	"""Kept for backward compatibility - other files still import this
+	name. All it does now is resolve the right adapter for this settings
+	row and ask it to build headers - the actual header logic (which
+	header name, oauth2 vs api_key, ...) lives in that provider's own
+	adapter, not here.
+	"""
+	return get_adapter(settings).get_auth_headers(extra)
 
 
 @frappe.whitelist(allow_guest=False)
-def get_flick_access_token(company:str):
-    """Fetch access token from Flick API using Client ID and Client Secret stored in Company DocType"""
-    doc = frappe.get_doc("Company", company)
-    base_url = doc.custom_base_url
-    client_id = doc.custom_client_id
-    if not base_url or not client_id or not doc.custom_client_secret:
-        frappe.throw(_("Please enter Base URL, Client ID and Client Secret in Company."))
-    client_secret = doc.custom_client_secret
-    url = f"{base_url}/v1/oauth/token"
-    headers = {
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "grant_type": "client_credentials",
-        "client_id": client_id,
-        "client_secret": client_secret
-    }
+def verify_flick_token(company: str = None, provider_settings: str = None):
+	"""Verify auth for a specific E-Invoice Provider Settings row when one
+	is given (that's what the Provider Settings form's own button passes -
+	see e_invoice_provider_settings.js), otherwise falls back to the active
+	enabled row for the given company (older Company-button callers).
+	Records the result on that row's Last Test Status / Last Test On /
+	Last Test Response - always the row actually being tested, not
+	whichever row happens to be enabled elsewhere for the same company."""
+	settings = get_settings_for_action(company, provider_settings)
+	result = get_adapter(settings).verify_auth()
 
-    try:
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()  # raises error for bad responses
-        response_json = response.json()
-        # frappe.msgprint(f"Token Response: {response_json}")
-        access_token = response_json.get("access_token")
+	if isinstance(result, dict):
+		save_last_response(settings, "last_test_response", result.get("response"))
 
-        if not access_token:
-            frappe.throw(_("Access token not found in response"))
-          # default 1 hour
-        dubai_tz = pytz.timezone("Asia/Dubai")
-        current_time = now_datetime().astimezone(dubai_tz)
-
-        # ✅ Store ACTUAL expiry
-        expiry_time = current_time + timedelta(hours=1)
-
-        doc.db_set("custom_access_token", access_token)
-        doc.db_set("custom_token_expiry_time", expiry_time)
+	return result
 
 
-        frappe.db.commit()
-        return {"access_token": access_token}
+@frappe.whitelist(allow_guest=False)
+def get_participant_details(company: str = None, provider_settings: str = None):
+	"""Fetch participant details for a specific row when one is given,
+	otherwise the active provider for the given company. Saves a copy on
+	Last Participant Response so it's visible on the form."""
+	settings = get_settings_for_action(company, provider_settings)
+	result = get_adapter(settings).get_participant_details()
 
-    except requests.exceptions.RequestException as e:
-        return {
-            "status": "error",
-            "message": str(e)
-        }
+	if isinstance(result, dict):
+		save_last_response(settings, "last_participant_response", result.get("response"))
+
+	return result
+
+
+@frappe.whitelist(allow_guest=False)
+def get_flick_access_token(company: str = None, provider_settings: str = None):
+	"""Fetch (or reuse the cached) OAuth2 access token for a specific row
+	when one is given, otherwise the active provider for the given company.
+	Redis cache stays the source of truth this app actually relies on (see
+	get_valid_flick_token) - this also saves a copy on Last Access Token
+	purely so it's visible on the form. Since Redis silently refreshes this
+	token on its own whenever it expires, treat this field as "the last one
+	that was fetched", not "the one currently in use" - it won't
+	auto-update itself the next time a different function refreshes the
+	real cached token in the background."""
+	settings = get_settings_for_action(company, provider_settings)
+	token = get_adapter(settings).get_valid_token()
+
+	settings.db_set("last_access_token", token)
+
+	return {"access_token": token}
 
 
 def get_valid_flick_token(company):
-    company_doc = frappe.get_doc("Company", company)
+	"""Return a valid access token for this company's active provider,
+	refreshing if needed. Only meaningful when that provider/row uses
+	OAuth2 - kept under this name for backward compatibility with older
+	callers, but it now works for any OAuth2-based adapter, not just Flick."""
+	settings = get_active_provider_settings(company)
+	return get_adapter(settings).get_valid_token()
 
-    current_time = now_datetime()
-    expiry_time = get_datetime(company_doc.custom_token_expiry_time)
-
-    # ✅ If token is valid → return it
-    if (
-        company_doc.custom_access_token
-        and expiry_time
-        and current_time < expiry_time
-    ):
-        return company_doc.custom_access_token
-
-    # ❌ Token expired → fetch new
-    response = get_flick_access_token(company)
-
-    access_token = response.get("access_token")
-
-    if not access_token:
-        frappe.throw(_("Failed to refresh access token"))
-
-    return access_token
 
 @frappe.whitelist()
 def get_document_status(invoice_name: str):
-    """Fetch document status from Flick API and save response in Sales Invoice DocType"""
-    try:
-        sales_invoice_doc = frappe.get_doc("Sales Invoice", invoice_name)
-        company_doc = frappe.get_doc("Company", sales_invoice_doc.company)
+	"""Fetch document status from this company's active provider and save
+	the response on the Sales Invoice."""
+	try:
+		sales_invoice_doc = frappe.get_doc("Sales Invoice", invoice_name)
+		settings = get_active_provider_settings(sales_invoice_doc.company)
+		adapter = get_adapter(settings)
 
-        participant_id = company_doc.custom_participant_id
-        auth_key = company_doc.custom_xflickauthkey
+		response_json = adapter.get_document_status("Sales Invoice", sales_invoice_doc)
 
-        if not participant_id:
-            frappe.throw(_("Participant ID is missing in Company"))
+		if isinstance(response_json, dict) and response_json.get("data"):
+			data = response_json.get("data", {})
+			reporting_status = data.get("reporting_status")
+			sales_invoice_doc.db_set(
+				"custom_document_status_response",
+				json.dumps(response_json)
+			)
+			if reporting_status:
+				sales_invoice_doc.db_set("custom_reporting_status", reporting_status)
 
+		return response_json
 
-        if not sales_invoice_doc.custom_submit_response:
-            frappe.throw(_("Submit response not found in Sales Invoice"))
-
-        # Extract document ID
-        response_data = json.loads(sales_invoice_doc.custom_submit_response)
-        document_id = response_data.get("data", {}).get("id")
-
-        if not document_id:
-            frappe.throw(_("Document ID not found in submit response"))
-        base_url = company_doc.custom_base_url
-        if not base_url:
-            frappe.throw(_("Base URL is missing in Company"))
-        url = f"{base_url}/v1/{participant_id}/documents/{document_id}"
-
-        access_token = get_valid_flick_token(company_doc.name)
-        if auth_key:
-            headers = {
-                "X-Flick-Auth-Key": auth_key
-            }
-
-        # Case 2: Fallback to Access Token
-        elif access_token:
-            headers = {
-                "Authorization": f"Bearer {access_token}"
-            }
-
-        # Case 3: Neither available
-        else:
-            frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
-        # headers = {
-        #     "X-Flick-Auth-Key": auth_key
-        # }
-
-        response = requests.get(url, headers=headers)
-
-      
-        if response.status_code == 200:
-            response_json = response.json()
-            data = response_json.get("data", {})
-            reporting_status = data.get("reporting_status")
-            sales_invoice_doc.db_set(
-                "custom_document_status_response",
-                json.dumps(response_json)
-            )
-            if reporting_status:
-                sales_invoice_doc.db_set(
-                    "custom_reporting_status",
-                    reporting_status)
-                
-            return response_json
-
-        else:
-            return {
-                "status": "error",
-                "message": response.text
-    }
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "Flick Document Status Error")
-        frappe.throw(_("Failed to fetch document status"))
-
-
-
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "E-Invoice Document Status Error")
+		frappe.throw(_("Failed to fetch document status"))
