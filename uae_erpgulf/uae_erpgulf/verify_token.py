@@ -58,18 +58,22 @@ def get_flick_access_token(company: str = None, provider_settings: str = None):
 	"""Fetch (or reuse the cached) OAuth2 access token for a specific row
 	when one is given, otherwise the active provider for the given company.
 	Redis cache stays the source of truth this app actually relies on (see
-	get_valid_flick_token) - this also saves a copy on Last Access Token
-	purely so it's visible on the form. Since Redis silently refreshes this
-	token on its own whenever it expires, treat this field as "the last one
-	that was fetched", not "the one currently in use" - it won't
-	auto-update itself the next time a different function refreshes the
-	real cached token in the background."""
+	get_valid_flick_token) - this also saves a copy on Last Access Token and
+	Token Expires At purely so they're visible on the form. Since Redis
+	silently refreshes both on its own whenever the token expires, treat
+	these fields as "the last one that was fetched", not "the one currently
+	in use" - they won't auto-update the next time a different function
+	refreshes the real cached token in the background."""
 	settings = get_settings_for_action(company, provider_settings)
-	token = get_adapter(settings).get_valid_token()
+	adapter = get_adapter(settings)
+	token = adapter.get_valid_token()
+	expiry = adapter.get_token_expiry()
 
 	settings.db_set("last_access_token", token)
+	if expiry:
+		settings.db_set("token_expires_at", expiry)
 
-	return {"access_token": token}
+	return {"access_token": token, "expires_at": str(expiry) if expiry else None}
 
 
 def get_valid_flick_token(company):
@@ -92,15 +96,33 @@ def get_document_status(invoice_name: str):
 
 		response_json = adapter.get_document_status("Sales Invoice", sales_invoice_doc)
 
-		if isinstance(response_json, dict) and response_json.get("data"):
+		# Always save whatever came back, regardless of shape - this used to
+		# only save/extract when response_json was a dict with a "data" key
+		# (Flick's shape: {"data": {"reporting_status": ...}}). Marmin's
+		# peppol-status-logs endpoint doesn't have a confirmed docs page for
+		# its response shape yet (may well be a flat dict, or a list/log of
+		# entries, given the endpoint name) - under the old check, a Marmin
+		# response failing that isinstance/"data" test meant clicking "Get
+		# Document Status" silently saved nothing at all. Now the raw
+		# response is always saved, and reporting_status is only pulled out
+		# when the shape actually looks like it has one (nested under
+		# "data", the same way Flick's does, or flat at the top level, the
+		# same fallback pattern already used for the submit response
+		# elsewhere in this app) - never assumed for a shape we haven't
+		# confirmed yet, like a bare list.
+		sales_invoice_doc.db_set(
+			"custom_document_status_response",
+			json.dumps(response_json)
+		)
+
+		reporting_status = None
+		if isinstance(response_json, dict):
 			data = response_json.get("data", {})
-			reporting_status = data.get("reporting_status")
-			sales_invoice_doc.db_set(
-				"custom_document_status_response",
-				json.dumps(response_json)
-			)
-			if reporting_status:
-				sales_invoice_doc.db_set("custom_reporting_status", reporting_status)
+			reporting_status = data.get("reporting_status") or response_json.get("reporting_status")
+		if reporting_status:
+			sales_invoice_doc.db_set("custom_reporting_status", reporting_status)
+
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 		return response_json
 

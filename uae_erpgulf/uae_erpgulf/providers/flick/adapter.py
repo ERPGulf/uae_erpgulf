@@ -64,12 +64,22 @@ class FlickAdapter(BaseAdapter):
         }
         response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload)
         response.raise_for_status()
-        access_token = response.json().get("access_token")
+        response_json = response.json()
+        access_token = response_json.get("access_token")
 
         if not access_token:
             frappe.throw(_("Access token not found in response"))
 
-        self.set_cached_token(access_token)
+        # expires_in (seconds) is the standard OAuth2 client_credentials
+        # field (RFC 6749) - use it when Flick sends it, so the cached TTL
+        # (and Token Expires At on the form) matches what Flick actually
+        # issued instead of the base class's flat 55-minute assumption.
+        expires_in = response_json.get("expires_in")
+        if isinstance(expires_in, (int, float)) and expires_in > 0:
+            self.set_cached_token(access_token, expires_in_sec=int(expires_in))
+        else:
+            self.set_cached_token(access_token)
+
         return access_token
 
     # ---- verify / participant ----
@@ -181,7 +191,15 @@ class FlickAdapter(BaseAdapter):
         else:
             url = f"{base_url}/v1/{participant_id}/documents"
 
+        # Flick keeps ONLY its existing "<invoice>_uae_invoice.json" file
+        # (save_and_attach_invoice_json in json_einvoice.py, already saved
+        # before this ever runs) - no second file here. Every other ASP
+        # (Marmin now, and any of the ~34 more that get their own adapter
+        # later) calls self.save_outgoing_payload(doc, payload) instead,
+        # since none of them already have a docs-verified JSON file of
+        # their own the way Flick does.
         payload = {"document": json_data}
+
         response = requests.post(url, headers=headers, json=payload, timeout=120)
 
         try:
@@ -201,7 +219,13 @@ class FlickAdapter(BaseAdapter):
             frappe.throw(_("Submit response not found in Invoice"))
 
         response_data = json.loads(doc.custom_submit_response)
-        document_id = response_data.get("data", {}).get("id")
+        submit_data = response_data.get("data", {})
+        document_id = submit_data.get("id")
+        # Flick's own submit response carries a second identifier alongside
+        # its internal id - document_identifier, which is just this
+        # invoice's own name (doc.name). Falling back to doc.name here in
+        # case an older submit response predates that field being saved.
+        document_identifier = submit_data.get("document_identifier") or doc.name
         if not document_id:
             frappe.throw(_("Document ID not found in submit response"))
 
@@ -209,14 +233,50 @@ class FlickAdapter(BaseAdapter):
         if not base_url:
             frappe.throw(_("Base URL is missing on E-Invoice Provider Settings"))
 
-        url = f"{base_url}/v1/{participant_id}/documents/{document_id}"
         headers = self.get_auth_headers()
+
+        # Primary call - the same "documents/{id}" path this adapter has
+        # always used.
+        url = f"{base_url}/v1/{participant_id}/documents/{document_id}"
         response = requests.get(url, headers=headers)
 
-        if response.status_code == 200:
-            return response.json()
+        if response.status_code != 200:
+            return {"status": "error", "message": response.text}
 
-        return {"status": "error", "message": response.text}
+        try:
+            data = response.json()
+        except Exception:
+            return response.text
+
+        # This has come back as an empty list ([]) for a document Flick had
+        # already fully processed and reported (confirmed against a real
+        # invoice) - there's no verified docs page in this app for this
+        # exact endpoint to explain why. NOT confirmed against Flick's own
+        # docs (unlike the Marmin endpoints elsewhere in this app, which
+        # were each checked against a real docs page before being written) -
+        # this is a best-effort fallback based only on the evidence at hand
+        # (the submit response carries both an internal id and a
+        # document_identifier, so it's plausible this endpoint is actually a
+        # filtered list matched by document_identifier, not a direct id
+        # lookup). If this still comes back empty, the real fix is
+        # confirming the correct endpoint/parameter against Flick's docs or
+        # support, not guessing further here.
+        if isinstance(data, list) and not data and document_identifier:
+            alt_url = f"{base_url}/v1/{participant_id}/documents"
+            alt_response = requests.get(
+                alt_url,
+                headers=headers,
+                params={"document_identifier": document_identifier},
+            )
+            if alt_response.status_code == 200:
+                try:
+                    alt_data = alt_response.json()
+                except Exception:
+                    alt_data = None
+                if alt_data:
+                    return alt_data
+
+        return data
 
     def get_document_xml(self, doctype, doc):
         settings = self.settings

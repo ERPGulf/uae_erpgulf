@@ -39,6 +39,7 @@
   "diagnostics_tab",
   "section_diagnostics",
   "last_access_token",
+  "token_expires_at",
   "last_test_response",
   "last_webhook_subscribe_response",
   "column_break_wnft",
@@ -286,12 +287,18 @@
    "label": "Last Access Token",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "token_expires_at",
+   "fieldtype": "Datetime",
+   "label": "Token Expires At",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-09 13:08:44.358370",
+ "modified": "2026-09-09 15:49:25.207779",
  "modified_by": "Administrator",
  "module": "uae_erpgulf",
  "name": "E-Invoice Provider Settings",
