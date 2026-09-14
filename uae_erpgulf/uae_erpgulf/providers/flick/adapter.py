@@ -1,15 +1,16 @@
 """Flick Network L.L.C adapter.
-
 Every Flick-specific detail (URL paths, header names, payload/response
 shapes) lives here and nowhere else in the app. This is a straight move of
 the logic that used to be spread across verify_token.py / test.py /
-send_purchase.py / attach.py / webhook.py / participant.py / customer.py -
-nothing about how it talks to Flick has changed, it's just now behind the
-same interface every other adapter uses.
+send_purchase.py / attach.py / webhook.py / customer.py - nothing about how
+it talks to Flick has changed, it's just now behind the same interface
+every other adapter uses.
+(participant.py used to be listed here too - it only ever held a thin
+update_flick_participant() wrapper with zero real callers anywhere in the
+app, so it's been removed rather than migrated.)
 """
 
 import json
-
 import frappe
 import requests
 from frappe import _
@@ -210,6 +211,11 @@ class FlickAdapter(BaseAdapter):
         return response.status_code, response_data
 
     def get_document_status(self, doctype, doc):
+        """Return shape: always {"http_status": <int>, "response": <body>},
+        success or failure - matches Marmin's adapter (see its own
+        get_document_status docstring for why: so a failure here shows up
+        in the "Get Document Status" dialog with its real HTTP status
+        instead of escaping as Frappe's own generic red error box)."""
         settings = self.settings
         participant_id = settings.participant_id
         if not participant_id:
@@ -241,26 +247,14 @@ class FlickAdapter(BaseAdapter):
         response = requests.get(url, headers=headers)
 
         if response.status_code != 200:
-            return {"status": "error", "message": response.text}
+            return {"http_status": response.status_code, "response": response.text}
 
         try:
             data = response.json()
         except Exception:
-            return response.text
+            return {"http_status": response.status_code, "response": response.text}
 
-        # This has come back as an empty list ([]) for a document Flick had
-        # already fully processed and reported (confirmed against a real
-        # invoice) - there's no verified docs page in this app for this
-        # exact endpoint to explain why. NOT confirmed against Flick's own
-        # docs (unlike the Marmin endpoints elsewhere in this app, which
-        # were each checked against a real docs page before being written) -
-        # this is a best-effort fallback based only on the evidence at hand
-        # (the submit response carries both an internal id and a
-        # document_identifier, so it's plausible this endpoint is actually a
-        # filtered list matched by document_identifier, not a direct id
-        # lookup). If this still comes back empty, the real fix is
-        # confirming the correct endpoint/parameter against Flick's docs or
-        # support, not guessing further here.
+    
         if isinstance(data, list) and not data and document_identifier:
             alt_url = f"{base_url}/v1/{participant_id}/documents"
             alt_response = requests.get(
@@ -274,9 +268,9 @@ class FlickAdapter(BaseAdapter):
                 except Exception:
                     alt_data = None
                 if alt_data:
-                    return alt_data
+                    return {"http_status": alt_response.status_code, "response": alt_data}
 
-        return data
+        return {"http_status": response.status_code, "response": data}
 
     def get_document_xml(self, doctype, doc):
         settings = self.settings
@@ -325,6 +319,17 @@ class FlickAdapter(BaseAdapter):
         frappe.throw(_("API Error: {0}").format(response.text))
 
     # ---- webhook ----
+    def get_webhook_listener_url(self):
+        """URL for flick_webhook_listener below - the one function in this
+        file that genuinely can't be generic (it parses Flick's own webhook
+        JSON shape directly), used both by register_webhook() here and by
+        e_invoice_provider_settings.py's set_webhook_url() to fill in the
+        Webhook URL field without that shared file needing to know Flick's
+        URL itself."""
+        return frappe.utils.get_url(
+            "/api/method/uae_erpgulf.uae_erpgulf.providers.flick.adapter.flick_webhook_listener"
+        )
+
     def register_webhook(self):
         settings = self.settings
         base_url = self.get_base_url()
@@ -333,9 +338,7 @@ class FlickAdapter(BaseAdapter):
 
         headers = self.get_auth_headers({"Content-Type": "application/json"})
 
-        endpoint = frappe.utils.get_url(
-            "/api/method/uae_erpgulf.uae_erpgulf.webhook.flick_webhook_listener"
-        )
+        endpoint = self.get_webhook_listener_url()
         payload = {
             "name": "ERPNext Webhook",
             "endpoint": endpoint,
@@ -396,3 +399,99 @@ class FlickAdapter(BaseAdapter):
             return response.json()
         except Exception:
             return {"raw_response": response.text}
+
+
+# ---- inbound webhook listener ----
+# Moved here from webhook.py (was uae_erpgulf.uae_erpgulf.webhook.
+# flick_webhook_listener - get_webhook_listener_url() above and
+# e_invoice_provider_settings.py's set_webhook_url() both point at the new
+# dotted path now). Everything else that used to live in webhook.py stayed
+# there because it's genuinely generic (calls get_adapter(settings).
+# register_webhook() etc.) - this is the one function that can't be, since
+# it's the endpoint Flick's own server posts a Flick-shaped JSON body to,
+# not something this app calls out to Flick. A future ASP with its own
+# webhook API needs its own listener function shaped around its own
+# payload, the same way this one is shaped around Flick's.
+@frappe.whitelist(allow_guest=True)  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
+def flick_webhook_listener():
+    """Listener for Flick API webhooks. Logs incoming data and updates invoice status."""
+    try:
+
+        raw_data = frappe.request.get_data(as_text=True)
+        data = json.loads(raw_data)
+
+        # Extract top-level fields
+        event_type = data.get("event")
+        participant_id = data.get("participant_id")
+
+        # Extract nested data
+        doc_data = data.get("data", {})
+
+        document_id = doc_data.get("document_id")
+        status = doc_data.get("status")
+        exchange_status = doc_data.get("exchange_status")
+        reporting_status = doc_data.get("reporting_status")
+        invoice_number = doc_data.get("document_identifier")
+
+        # Create Webhook Log Doc
+        doc = frappe.get_doc({
+            "doctype": "UAE E-Invoice Webhook Logs",
+            "webhook_response": raw_data,
+            "document_id": document_id,
+            "participant_id": participant_id,
+            "event_type": event_type,
+            "reporting_status": reporting_status,
+            "exchange_status": exchange_status,
+            "invoice_number": invoice_number,
+            "status": status
+        })
+
+        doc.insert(ignore_permissions=True)
+        if document_id and reporting_status:
+
+            # Sales Invoice
+            sales_invoice = frappe.db.get_value(
+                "Sales Invoice",
+                {"custom_document_id": document_id},
+                "name"
+            )
+
+            if sales_invoice:
+                frappe.db.set_value(
+                    "Sales Invoice",
+                    sales_invoice,
+                    "custom_reporting_status",
+                    reporting_status
+                )
+
+            # Purchase Invoice
+            purchase_invoice = frappe.db.get_value(
+                "Purchase Invoice",
+                {"custom_document_id": document_id},
+                "name"
+            )
+
+            if purchase_invoice:
+                frappe.db.set_value(
+                    "Purchase Invoice",
+                    purchase_invoice,
+                    "custom_reporting_status",
+                    reporting_status
+                )
+
+        frappe.db.commit()  # nosemgrep: frappe-manual-commit
+
+        return {
+            "acknowledged": True,
+            "processed": True
+        }
+
+    except Exception:
+        frappe.log_error(
+            title="Webhook Processing Error",
+            message=frappe.get_traceback()
+        )
+        return {
+            "acknowledged": False,
+            "processed": False
+        }

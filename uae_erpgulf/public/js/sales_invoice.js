@@ -1,155 +1,3 @@
-
-// frappe.ui.form.on("Sales Invoice", {
-//     refresh(frm) {
-
-//         frm.clear_custom_buttons();
-
-//         // Show button only if:
-//         // 1. Invoice is Submitted (docstatus = 1)
-//         // 2. UAE status is "Not Submitted"
-
-//         // if (
-//         //     frm.doc.docstatus === 1 &&
-//         //     frm.doc.custom_uae_einvoice_status === "Not Submitted"
-//         // ) {
-//         if (
-//             frm.doc.docstatus === 1 &&
-//             (
-//                 frm.doc.custom_uae_einvoice_status === "Not Submitted" ||
-//                 frm.doc.custom_reporting_status === "failed"
-//             )
-//         ) {
-
-//             frm.add_custom_button(
-//                 __("Send Invoice"),
-//                 () => {
-
-//                     frm.call({
-//                         method: "uae_erpgulf.uae_erpgulf.test.generate_and_send_einvoice",
-//                         args: {
-//                             doc: frm.doc   // 🔥 IMPORTANT
-//                         },
-//                         freeze: true,
-//                         freeze_message: __("Generating and sending UAE E-Invoice..."),
-//                         callback(r) {
-//                             if (!r.exc) {
-//                                 frappe.msgprint(__("UAE E-Invoice processed successfully"));
-//                                 frm.reload_doc();
-//                             }
-//                         }
-//                     });
-
-//                 },
-//                 __("UAE E-Invoice")
-//             );
-//         }
-//     }
-// });
-// frappe.ui.form.on("Sales Invoice", {
-//     refresh: function (frm) {
-//         if (!frm.doc.__islocal && frm.doc.custom_uae_einvoice_status !== "Not Submitted") {
-//             frm.add_custom_button(__('Get Document Status'), function () {
-//                 frappe.call({
-//                     method: "uae_erpgulf.uae_erpgulf.verify_token.get_document_status",
-//                     args: {
-//                         invoice_name: frm.doc.name
-//                     },
-//                     freeze: true,
-//                     freeze_message: __("Checking Flick Document Status..."),
-//                     callback: function (r) {
-//                         if (r.message) {
-//                             const res = r.message;
-//                             const data = res.data || {};
-
-//                             const rows = [
-//                                 ["Status", res.status || "-"],
-//                                 ["Message", res.message || "-"],
-//                                 ["Document ID", data.id || "-"],
-//                                 ["Exchange Status", data.exchange_status || "-"],
-//                                 ["Reporting Status", data.reporting_status || "-"],
-//                                 ["Reporting Reference", data.reporting_reference || "-"],
-//                             ];
-
-//                             const tableRows = rows.map(([field, value]) => `
-//                                 <tr>
-//                                     <td style="padding:8px 12px;border:1px solid #d1d8dd !important;font-weight:600;width:40%;">${field}</td>
-//                                     <td style="padding:8px 12px;border:1px solid #d1d8dd !important;">${value}</td>
-//                                 </tr>
-//                             `).join("");
-
-//                             const html = `
-//                                 <style>
-//                                     .flick-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-//                                     .flick-table th { background-color: #f0f4f7; padding: 8px 12px; border: 1px solid #d1d8dd !important; text-align: left; }
-//                                     .flick-table td { border: 1px solid #d1d8dd !important; }
-//                                     .flick-table tr:nth-child(even) { background-color: #f9f9f9; }
-//                                 </style>
-//                                 <table class="flick-table">
-//                                     <thead>
-//                                         <tr>
-//                                             <th>Field</th>
-//                                             <th>Value</th>
-//                                         </tr>
-//                                     </thead>
-//                                     <tbody>${tableRows}</tbody>
-//                                 </table>
-//                             `;
-
-//                             frappe.msgprint({
-//                                 title: __("Flick Document Status"),
-//                                 message: html,
-//                                 indicator: data.reporting_status === "reported" ? "green" : "orange",
-//                                 wide: true
-//                             });
-
-//                             frm.reload_doc();
-//                         }
-//                     }
-//                 });
-//             });
-//         }
-//     }
-// });
-
-
-// frappe.ui.form.on("Sales Invoice", {
-//     refresh(frm) {
-//         toggle_return_against_field(frm);
-//     },
-
-//     company(frm) {
-//         toggle_return_against_field(frm);
-//     },
-
-//     is_return(frm) {
-//         toggle_return_against_field(frm);
-//     }
-// });
-
-// function toggle_return_against_field(frm) {
-//     if (!frm.doc.company) {
-//         frm.set_df_property("custom_return_against_for_zatca", "hidden", 1);
-//         return;
-//     }
-
-//     frappe.db.get_value(
-//         "Company",
-//         frm.doc.company,
-//         "custom_allow_creditnote_without_original_invoice_in_the_system"
-//     ).then((r) => {
-//         const show_field =
-//             frm.doc.is_return == 1 &&
-//             cint(r.message.custom_allow_creditnote_without_original_invoice_in_the_system) == 1;
-
-//         frm.set_df_property(
-//             "custom_return_against_for_zatca",
-//             "hidden",
-//             !show_field
-//         );
-//     });
-// }
-
-
 frappe.ui.form.on("Sales Invoice", {
     refresh(frm) {
 
@@ -209,7 +57,22 @@ frappe.ui.form.on("Sales Invoice", {
                     freeze_message: __("Checking Document Status..."),
                     callback: function (r) {
                         if (r.message) {
-                            const res = r.message;
+                            // verify_token.py's get_document_status now always returns
+                            // {http_status, response} - the ASP's real HTTP status code
+                            // alongside its body - instead of just the bare body. That's
+                            // what lets this dialog show the status code and pick a real
+                            // "red" for an actual failed call, instead of every non-
+                            // "reported" case (including a perfectly normal 200 that's
+                            // just still processing) looking the same shade of orange.
+                            const envelope = r.message;
+                            const httpStatus =
+                                envelope && typeof envelope === "object" && "http_status" in envelope
+                                    ? envelope.http_status
+                                    : undefined;
+                            const res =
+                                envelope && typeof envelope === "object" && "response" in envelope
+                                    ? envelope.response
+                                    : envelope;
 
                             // No fixed table of named fields anymore - different ASPs shape
                             // this response too differently for that (Flick nests under
@@ -275,7 +138,20 @@ frappe.ui.form.on("Sales Invoice", {
 
                             const rawJson = frappe.utils.escape_html(JSON.stringify(res, null, 2));
 
+                            // Real HTTP status code, not the reporting_status/status text
+                            // above - e.g. 200 vs a genuine 4xx/5xx from the ASP. Only
+                            // this decides red: a non-2xx is an actual failed call, while
+                            // "no reporting_status yet" on a 200 (document just hasn't
+                            // finished processing on the ASP's side) is still orange, not
+                            // an error.
+                            const isHttpSuccess =
+                                typeof httpStatus === "number" && httpStatus >= 200 && httpStatus < 300;
+                            const indicator = !isHttpSuccess
+                                ? "red"
+                                : (status === "reported" ? "green" : "orange");
+
                             const html = `
+                                <p><b>HTTP Status:</b> ${frappe.utils.escape_html(String(httpStatus ?? "-"))}</p>
                                 <p><b>Document ID:</b> ${frappe.utils.escape_html(String(documentId))}</p>
                                 <p><b>Status:</b> ${frappe.utils.escape_html(String(status))}</p>
                                 <p style="margin-top:12px;"><b>Response</b></p>
@@ -285,7 +161,7 @@ frappe.ui.form.on("Sales Invoice", {
                             frappe.msgprint({
                                 title: __("Document Status"),
                                 message: html,
-                                indicator: status === "reported" ? "green" : "orange",
+                                indicator: indicator,
                                 wide: true
                             });
 
@@ -302,7 +178,13 @@ frappe.ui.form.on("Sales Invoice", {
             // for Marmin. This button is how you fetch it manually once
             // Marmin has actually finished - check "Get Document Status"
             // first if you're not sure whether it's ready yet.
-            frm.add_custom_button(__('Get Document XML'), function () {
+            //
+            // XML and PDF share the group name below ("Get Document") -
+            // that's what makes frm.add_custom_button render them as ONE
+            // dropdown button with two menu items, instead of two separate
+            // buttons sitting side by side. "Get Document Status" above has
+            // no group, so it stays its own standalone button.
+            frm.add_custom_button(__('XML'), function () {
                 frappe.call({
                     method: "uae_erpgulf.uae_erpgulf.attach.get_document_xml",
                     args: {
@@ -329,7 +211,37 @@ frappe.ui.form.on("Sales Invoice", {
                     // generic message, so frappe.call's default error
                     // dialog already shows something useful.
                 });
-            });
+            }, __('Get Document'));
+
+            // Marmin's PDF endpoint (download-pdf) - same async-generation
+            // caveat as XML above, so this stays a manual button rather
+            // than something auto-fetched at submit time. Same group as
+            // XML above ("Get Document") so this becomes the second menu
+            // item on that one dropdown button, not a separate button.
+            frm.add_custom_button(__('PDF'), function () {
+                frappe.call({
+                    method: "uae_erpgulf.uae_erpgulf.attach.get_document_pdf",
+                    args: {
+                        doctype: "Sales Invoice",
+                        invoice_name: frm.doc.name
+                    },
+                    freeze: true,
+                    freeze_message: __("Fetching Document PDF..."),
+                    callback: function (r) {
+                        if (r.message && r.message.file_url) {
+                            frappe.msgprint({
+                                title: __("Document PDF"),
+                                message: `<p>PDF fetched and attached to this invoice.</p><p><a href="${r.message.file_url}" target="_blank">${__("Open PDF")}</a></p>`,
+                                indicator: "green"
+                            });
+                            frm.reload_doc();
+                        }
+                    }
+                    // Same reasoning as Get Document XML above - attach.py's
+                    // get_document_pdf now throws the real reason, so no
+                    // custom error handling needed here either.
+                });
+            }, __('Get Document'));
         }
     }
 });

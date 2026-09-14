@@ -260,10 +260,10 @@
 #         "skipped": skipped,
 #         "failed": failed
 #     }
-
 import frappe
 import json
 import requests
+import time
 from frappe import _
 from uae_erpgulf.uae_erpgulf.json_einvoice import send_invoice_json
 from uae_erpgulf.uae_erpgulf.provider_settings import get_active_provider_settings
@@ -457,21 +457,75 @@ def generate_and_send_einvoice(doc: Union[Document, str], method: Optional[str] 
         ):
             # Only auto-fetch right after submit for an ASP whose adapter
             # says it's safe to (AUTO_FETCH_DOCUMENTS_ON_SUBMIT - see
-            # providers/base.py). Marmin sets this False: its XML is
-            # generated asynchronously (a "not generated yet" response right
-            # after submit is normal, not a bug) and it has no PDF endpoint
-            # at all - so for Marmin this whole block is skipped, and every
-            # successful submission no longer logs a spurious "PDF fetch
-            # failed" Error Log entry for a feature that was never going to
-            # work anyway. Fetching Marmin's real XML/status later is what
-            # the "Get Document Status"/"Get XML" buttons in the UI already
-            # do, once Marmin has actually finished processing the document.
-            try:
-                get_document_xml("Sales Invoice", doc.name)
-                get_document_pdf("Sales Invoice", doc.name)
-            except Exception:
-                frappe.log_error(frappe.get_traceback(), "E-Invoice XML/PDF Fetch Error")
+            # providers/base.py). Flick's XML/PDF are generated
+            # synchronously, so its first attempt below always succeeds and
+            # this loop exits immediately. Marmin's are generated
+            # asynchronously after acceptance, so its adapter sets
+            # DOCUMENT_FETCH_RETRY_ATTEMPTS/DELAY_SECONDS (also
+            # providers/base.py) to give a "not generated yet" response a
+            # few short-spaced retries before giving up - failing once and
+            # logging quietly either way, never blocking or surfacing an
+            # error to whoever submitted the invoice (the "Get Document
+            # Status"/"Get XML"/"Get PDF" buttons in the UI are still there
+            # to fetch it manually once Marmin has actually finished).
+            retry_attempts = max(
+                1, getattr(adapter, "DOCUMENT_FETCH_RETRY_ATTEMPTS", 1)
+            )
+            retry_delay_seconds = getattr(
+                adapter, "DOCUMENT_FETCH_RETRY_DELAY_SECONDS", 0
+            )
+            for fetch_fn, file_label in (
+                (get_document_xml, "XML"),
+                (get_document_pdf, "PDF"),
+            ):
+                for attempt in range(1, retry_attempts + 1):
+                    # frappe.throw() unconditionally queues its message via
+                    # frappe.msgprint() the moment it's called, THEN raises -
+                    # so even though the except below swallows the
+                    # exception and never re-raises it, that message had
+                    # already been added to this request's message_log and
+                    # would otherwise still pop up in the submit's own
+                    # response (this is exactly what was showing the "XML
+                    # not generated..." error during a plain invoice submit
+                    # instead of only the actual submit response). Snapshot
+                    # the log length before each attempt and drop anything
+                    # this attempt added on failure, so a swallowed/retried
+                    # fetch failure stays truly silent to whoever just
+                    # submitted the invoice - a genuine error from
+                    # elsewhere in this request is untouched, since only
+                    # entries added after this snapshot are ever removed.
+                    message_log_length_before = len(frappe.local.message_log)
+                    try:
+                        fetch_fn("Sales Invoice", doc.name)
+                        break
+                    except Exception:
+                        del frappe.local.message_log[message_log_length_before:]
+                        if attempt == retry_attempts:
+                            frappe.log_error(
+                                frappe.get_traceback(),
+                                f"E-Invoice {file_label} Fetch Error",
+                            )
+                        elif retry_delay_seconds:
+                            time.sleep(retry_delay_seconds)
         doc.db_set("custom_uae_einvoice_status", invoice_status)
+        # Flick's own submit response already carries a reporting_status
+        # ("pending" right after acceptance, before the FTA has actually
+        # reported it) - that's what the extraction above reads. Marmin's
+        # submit response has no such field at all (confirmed against a
+        # real one: document_status/document_number/... but nothing about
+        # FTA reporting), so reporting_status stays None here for it, and
+        # badge_sales.js's FTA badge showed no ribbon at all right after
+        # submitting a Marmin invoice - not even "Pending" - until someone
+        # clicked "Get Document Status" later. Since a genuinely successful
+        # submit always means "accepted, not yet confirmed reported" at
+        # this exact moment for ANY provider whose own response doesn't
+        # already say otherwise, default to "pending" here rather than
+        # leaving the field blank - this never overrides Flick's own real
+        # value (only fires when reporting_status is still unset), and
+        # "Get Document Status" still overwrites it with the real answer
+        # once the ASP actually has one.
+        if not reporting_status and invoice_status == "Success":
+            reporting_status = "pending"
         if reporting_status:
             doc.db_set("custom_reporting_status", reporting_status)
         if document_id:

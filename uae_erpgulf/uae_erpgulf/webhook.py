@@ -1,98 +1,46 @@
 import frappe
-import requests
-import json
 from frappe import _
 from uae_erpgulf.uae_erpgulf.provider_settings import (
     get_settings_for_action,
     save_last_response,
 )
 from uae_erpgulf.uae_erpgulf.providers import get_adapter
+from uae_erpgulf.uae_erpgulf.providers.flick.adapter import (
+    flick_webhook_listener as _flick_webhook_listener,
+)
+
+# The real flick_webhook_listener used to live here - it's been moved to
+# providers/flick/adapter.py (see get_webhook_listener_url() there), since
+# it's the one function in this file that genuinely can't be generic: it
+# parses Flick's own webhook JSON shape directly, rather than calling
+# get_adapter(settings).<method>() the way everything below still does.
+# Everything else in this file stays here because it IS truly ASP-agnostic.
 
 
-@frappe.whitelist(allow_guest=True)# nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
+@frappe.whitelist(allow_guest=True)  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
 def flick_webhook_listener():
-    """Listener for Flick API webhooks. Logs incoming data and updates invoice status."""
-    try:
+    """Backward-compatible alias, kept at the OLD path this function used
+    to live at (uae_erpgulf.uae_erpgulf.webhook.flick_webhook_listener) -
+    just delegates to the real one, now in providers/flick/adapter.py.
 
-        raw_data = frappe.request.get_data(as_text=True)
-        data = json.loads(raw_data)
+    This exists because moving the function's module changed its
+    whitelisted method path, and Flick's OWN webhook subscription (set up
+    on their servers via "Subscribe Webhook") remembers whatever URL was
+    current when it was registered - which may well be this old path, if
+    the webhook hasn't been explicitly re-subscribed since the move.
+    Without this alias, Flick keeps POSTing to a URL that no longer
+    resolves to anything, and every delivery just 404s silently - no
+    error anywhere in this app to notice, since the request never reaches
+    it at all. This is very likely why webhook status updates stopped
+    working after that refactor: not a logic bug in the listener itself,
+    a moved endpoint nobody told Flick about.
 
-        # 🔹 Extract top-level fields
-        event_type = data.get("event")
-        participant_id = data.get("participant_id")
-
-        # 🔹 Extract nested data
-        doc_data = data.get("data", {})
-
-        document_id = doc_data.get("document_id")
-        status = doc_data.get("status")
-        exchange_status = doc_data.get("exchange_status")
-        reporting_status = doc_data.get("reporting_status")
-        invoice_number = doc_data.get("document_identifier")
-
-        # ✅ Create Webhook Log Doc
-        doc = frappe.get_doc({
-            "doctype": "UAE E-Invoice Webhook Logs",
-            "webhook_response": raw_data,
-            "document_id": document_id,
-            "participant_id": participant_id,
-            "event_type": event_type,
-            "reporting_status": reporting_status,
-            "exchange_status": exchange_status,
-            "invoice_number":invoice_number,
-            "status": status
-        })
-
-        doc.insert(ignore_permissions=True)
-        if document_id and reporting_status:
-
-            # 🔹 Sales Invoice
-            sales_invoice = frappe.db.get_value(
-                "Sales Invoice",
-                {"custom_document_id": document_id},
-                "name"
-            )
-
-            if sales_invoice:
-                frappe.db.set_value(
-                    "Sales Invoice",
-                    sales_invoice,
-                    "custom_reporting_status",
-                    reporting_status
-                )
-
-            # 🔹 Purchase Invoice
-            purchase_invoice = frappe.db.get_value(
-                "Purchase Invoice",
-                {"custom_document_id": document_id},
-                "name"
-            )
-
-            if purchase_invoice:
-                frappe.db.set_value(
-                    "Purchase Invoice",
-                    purchase_invoice,
-                    "custom_reporting_status",
-                    reporting_status
-                )
-
-        # frappe.db.commit()
-        frappe.db.commit()
-
-        return {
-            "acknowledged": True,
-            "processed": True
-        }
-
-    except Exception:
-        frappe.log_error(
-            title="Webhook Processing Error",
-            message=frappe.get_traceback()
-        )
-        return {
-            "acknowledged": False,
-            "processed": False
-        }
+    Keeping this alias means it doesn't matter which URL Flick currently
+    has on file - old or new both work identically. Safe to remove only
+    once you've confirmed (via "Get Subscription" on the Provider
+    Settings row, or by re-subscribing) that Flick is actually POSTing to
+    the new providers.flick.adapter path."""
+    return _flick_webhook_listener()
 
 
 def update_webhook_logs():

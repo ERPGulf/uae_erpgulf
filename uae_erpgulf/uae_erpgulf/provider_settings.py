@@ -25,22 +25,46 @@ _SENSITIVE_KEYS = {
 
 
 def get_active_provider_settings(company):
-	"""Return the enabled E-Invoice Provider Settings row for this company.
+	"""Return the E-Invoice Provider Settings row this company actually
+	submits through.
 
-	Throws if none is enabled - every caller needs a real row to work with,
-	so failing loudly here beats a confusing AttributeError further down.
+	Company's own Accredited Service Providers select field is now the
+	single source of truth for WHICH provider that is - more than one
+	E-Invoice Provider Settings row can be enabled for the same company at
+	once (there's no more "only one enabled row" enforcement on that
+	doctype), so "the enabled row" stopped being unambiguous. This mirrors
+	validate_accredited_service_provider's own check in validation.py
+	exactly (same two lookups, same error shape) - that function already
+	worked this way before submit; this is what makes the actual submit/
+	status/XML/PDF/webhook calls agree with it, instead of picking
+	whichever row happened to be enabled regardless of what Company says.
+
+	Throws if Company hasn't picked a provider, or if the row for that
+	specific provider isn't enabled - every caller needs a real row to
+	work with, so failing loudly here beats a confusing AttributeError (or
+	worse, silently submitting through the wrong ASP) further down.
 	"""
+	provider = frappe.db.get_value("Company", company, "custom_accredited_service_providers")
+	if not provider:
+		frappe.throw(
+			_(
+				"Select an Accredited Service Provider on {0} (UAE E-invoicing tab) "
+				"before submitting e-invoices."
+			).format(company)
+		)
+
 	name = frappe.db.get_value(
 		"E-Invoice Provider Settings",
-		{"company": company, "enabled": 1},
+		{"company": company, "provider": provider, "enabled": 1},
 		"name",
 	)
 	if not name:
 		frappe.throw(
 			_(
-				"No enabled E-Invoice Provider Settings found for {0}. "
-				"Create one and tick Enabled before submitting e-invoices."
-			).format(company)
+				"No enabled E-Invoice Provider Settings found for {0} under {1}. "
+				"Create one (or tick Enabled on the existing row) before submitting "
+				"e-invoices."
+			).format(provider, company)
 		)
 	return frappe.get_doc("E-Invoice Provider Settings", name)
 

@@ -263,7 +263,18 @@ def get_invoice_notes(sales_invoice_doc):
     return invoice_note
 
 def get_issue_time(sales_invoice_doc):
-    """IBT-010 / ibr-128-ae compliant Issue Time resolver"""
+    """IBT-010 / ibr-128-ae compliant Issue Time resolver.
+
+    posting_time doesn't come back as one consistent type - it's a
+    datetime.timedelta in some contexts (the case this used to handle),
+    but a plain string ("HH:MM:SS" or "HH:MM:SS.ffffff") in others, which
+    used to hit issue_time.strftime(...) on a str and crash with "'str'
+    object has no attribute 'strftime'" (confirmed live, via Marmin credit
+    note submission calling this for the first time in this adapter -
+    likely always a latent issue for Flick's own use of this function too,
+    just not hit before now). frappe.utils.get_time() is frappe's own
+    normalizer for exactly this ambiguity - accepts a string, a
+    datetime.time, or a timedelta, and returns a real datetime.time."""
     issue_time = sales_invoice_doc.posting_time
     if not issue_time:
         return None
@@ -273,6 +284,8 @@ def get_issue_time(sales_invoice_doc):
         minutes = (total_seconds % 3600) // 60
         seconds = total_seconds % 60
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    if isinstance(issue_time, str):
+        return frappe.utils.get_time(issue_time).strftime("%H:%M:%S")
     return issue_time.strftime("%H:%M:%S")
 
 
@@ -510,86 +523,6 @@ def get_item_data(sales_invoice_doc, vat_rate):
 
     return invoice, total_net, total_tax
         
-def get_payment_means(sales_invoice_doc):
-    """
-    UAE / PEPPOL compliant PaymentMeans builder
-    """
-    if sales_invoice_doc.is_return == 1:
-        return None
-    if getattr(
-        sales_invoice_doc,
-        "custom_invoice_transaction_type_code",
-        None
-    ) == "X1XXXXX : Deemed supply transaction":
-        return None
-
-    payment_option = frappe.db.get_value(
-        'Mode of Payment',
-        sales_invoice_doc.mode_of_payment,
-        'custom_payment_means_codes'
-    )
-    if not payment_option:
-        frappe.throw(_("Payment means type code (IBT-081) is mandatory"))
-    payment_code, payment_name = payment_option.split(" - ", 1)
-
-    APPROVED_PAYMENT_MEANS = {
-        "1": "Instrument not defined",
-        "10": "Cash",
-        "20": "Cheque",
-        "30": "Credit transfer",
-        "31": "Debit transfer",
-        "42": "Payment to bank account",
-        "48": "Bank card",
-        "49": "Direct debit",
-        "55": "Debit card",
-        "58": "SEPA credit transfer",
-    }
-    if payment_code not in APPROVED_PAYMENT_MEANS:
-        frappe.throw(_(
-            f"Invalid payment means code {payment_code}. "
-            f"Must be from UN/ECE 4461 approved subset."
-        ))
-
-    payment_means = {
-        "payment_means_code": payment_code,
-        "payment_means_code_name": payment_name,
-    }
-    if payment_code in ("30", "58"):
-        if not sales_invoice_doc.company_bank_account:
-            frappe.throw(
-                _("Payment account bank (IBT-084) is mandatory for Credit Transfer")
-            )
-
-        bank = frappe.get_doc(
-            "Bank Account",
-            sales_invoice_doc.company_bank_account
-        )
-
-        payment_means["payee_financial_account"] = {
-            "id": bank.bank_account_no,
-            "id_scheme_id": "IBAN",
-            "name": bank.account_name,
-            "financial_institution_branch": {
-                "id": bank.branch_code or ""
-            }
-        }
-
-    # Card payments
-    if payment_code in ("48", "55"):
-        payment_means["card_account"] = {
-            "primary_account_number_id": "XXXXXXXXXXXX" + (
-                sales_invoice_doc.card_last_4_digits or "0000"
-            ),
-            "network_id": sales_invoice_doc.card_network or "UNKNOWN",
-            "holder_name": (
-                sales_invoice_doc.card_holder_name
-                or sales_invoice_doc.customer_name
-            )
-        }
-
-    return {
-        "payment_means": [payment_means]
-    }
 def get_invoice_transaction_metadata(doc):
     """Extracts the invoice transaction metadata bits from the custom field and returns a dict of flags for each type."""
     code = (doc.custom_invoice_transaction_type_code or "").strip()
@@ -623,7 +556,15 @@ def get_invoice_transaction_metadata(doc):
     }
 
 def get_payment_means(sales_invoice_doc):
-    """Build UAE E-invoicing payment_means array from Sales Invoice payments."""
+    """Build UAE E-invoicing payment_means array from Sales Invoice payments.
+
+    This used to be one of two functions named get_payment_means in this
+    file - Python only keeps the last def with a given name, so the earlier
+    one (a flat mode_of_payment + company_bank_account version, referencing
+    a mode_of_payment field that doesn't exist on Sales Invoice) was dead
+    code that could never actually run. It's been removed - this is the
+    only version now, and it's the one build_uae_invoice_json below has
+    always actually called."""
 
     payment_means_list = []
 
@@ -1060,4 +1001,4 @@ def get_vat_category_code(vat_category_label):
             "Must be one of S, Z, E, AE, O, N."
         ))
 
-    return code    
+    return code

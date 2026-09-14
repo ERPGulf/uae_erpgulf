@@ -174,6 +174,14 @@ class BaseAdapter:
         raise NotImplementedError
 
     def get_document_status(self, doctype, doc):
+        """Should return {"http_status": <int>, "response": <body>} in
+        every case - success or the ASP call failing - rather than
+        frappe.throw()-ing on a bad HTTP status. Both FlickAdapter and
+        MarminAdapter follow this now: it's what lets the "Get Document
+        Status" callers (verify_token.py, send_purchase.py) and their
+        buttons show the real status code and only colour a genuine
+        non-2xx red, instead of a failure escaping as Frappe's own generic
+        error dialog with no status code or real detail."""
         raise NotImplementedError
 
     def get_document_xml(self, doctype, doc):
@@ -190,3 +198,16 @@ class BaseAdapter:
 
     def get_webhook_deliveries(self):
         raise NotImplementedError
+
+    def get_webhook_listener_url(self):
+        """The URL this ASP's own server should call to deliver webhook
+        events, if it has one - e_invoice_provider_settings.py's
+        set_webhook_url() calls this to fill in the Webhook URL field, and
+        register_webhook() (where implemented) should call it too, rather
+        than each duplicating the same URL string.
+
+        None by default - an ASP with no webhook API at all (Marmin today)
+        just leaves this row's Webhook URL blank instead of showing a URL
+        for a listener that doesn't exist. Only override this where there's
+        a real listener function to point at, the way FlickAdapter does."""
+        return None

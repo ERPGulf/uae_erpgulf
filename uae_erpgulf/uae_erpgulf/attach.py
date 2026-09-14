@@ -42,9 +42,14 @@ def get_document_xml(doctype: str, invoice_name: str):
             "file_url": file_doc.file_url
         }
 
-    except Exception:
+    except Exception as e:
         frappe.log_error(frappe.get_traceback(), "E-Invoice XML Fetch Error")
-        frappe.throw(_("Failed to fetch document XML"))
+        # Show the real reason (e.g. Marmin's own "XML not generated for
+        # document ..." async-delay message) instead of a fixed generic
+        # sentence that used to hide it - same reasoning as the
+        # send_invoice_to_provider/generate_and_send_einvoice fix in
+        # test.py. Full traceback is still in the Error Log above.
+        frappe.throw(_("Failed to fetch document XML: {0}").format(str(e)))
 
 
 @frappe.whitelist()
@@ -83,6 +88,6 @@ def get_document_pdf(doctype: str, invoice_name: str):
             "file_url": file_doc.file_url
         }
 
-    except Exception:
+    except Exception as e:
         frappe.log_error(frappe.get_traceback(), "E-Invoice PDF Fetch Error")
-        frappe.throw(_("Failed to fetch document PDF"))
+        frappe.throw(_("Failed to fetch document PDF: {0}").format(str(e)))
