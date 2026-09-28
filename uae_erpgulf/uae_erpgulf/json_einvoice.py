@@ -1,3 +1,4 @@
+"""this file contains the functions to send the sales invoice to the provider."""
 import frappe
 import re
 from decimal import Decimal, ROUND_HALF_UP

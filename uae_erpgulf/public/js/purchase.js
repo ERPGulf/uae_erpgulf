@@ -3,10 +3,6 @@ frappe.ui.form.on("Purchase Invoice", {
 
         frm.clear_custom_buttons();
 
-        // Show button if:
-        // 1. Submitted
-        // 2. UAE status is Not Submitted OR Failed
-
         if (
             frm.doc.docstatus === 1 &&
             (
@@ -43,155 +39,152 @@ frappe.ui.form.on("Purchase Invoice", {
 frappe.ui.form.on("Purchase Invoice", {
     refresh: function (frm) {
         if (!frm.doc.__islocal && frm.doc.custom_uae_einvoice_status !== "Not Submitted") {
-            frm.add_custom_button(__('Get Document Status'), function () {
-                frappe.call({
-                    method: "uae_erpgulf.uae_erpgulf.send_purchase.get_document_status",
-                    args: {
-                        invoice_name: frm.doc.name
-                    },
-                    freeze: true,
-                    freeze_message: __("Checking Document Status..."),
-                    callback: function (r) {
-                        if (r.message) {
-                            // Same generic, envelope-aware dialog as the Sales Invoice
-                            // "Get Document Status" button (public/js/sales_invoice.js) -
-                            // send_purchase.get_document_status now returns the same
-                            // {http_status, response} shape as verify_token.py's version,
-                            // instead of the old hardcoded Flick-only {status, message,
-                            // data: {...}} table, which would have shown "-" for every
-                            // row (or just broken) for Marmin, and no longer matches
-                            // this envelope's shape either way.
-                            const envelope = r.message;
-                            const httpStatus =
-                                envelope && typeof envelope === "object" && "http_status" in envelope
-                                    ? envelope.http_status
-                                    : undefined;
-                            const res =
-                                envelope && typeof envelope === "object" && "response" in envelope
-                                    ? envelope.response
-                                    : envelope;
 
-                            const isArray = Array.isArray(res);
-                            const isObject = res && typeof res === "object" && !isArray;
-                            const primary = isArray ? (res[res.length - 1] || {}) : (isObject ? res : {});
-                            const nested = (primary && typeof primary === "object" && primary.data && typeof primary.data === "object")
-                                ? primary.data
-                                : {};
+            // Hide Get Document Status once reported
+            const is_reported = (frm.doc.custom_reporting_status || "").toLowerCase() === "reported";
 
-                            const findKeyLike = (obj, patterns) => {
-                                if (!obj || typeof obj !== "object") return undefined;
-                                const keys = Object.keys(obj);
-                                for (const p of patterns) {
-                                    for (const key of keys) {
-                                        if (p.test(key)) {
-                                            const value = obj[key];
-                                            if (value !== undefined && value !== null && value !== "") {
-                                                return value;
+            if (!is_reported) {
+                frm.add_custom_button(__('Get Document Status'), function () {
+                    frappe.call({
+                        method: "uae_erpgulf.uae_erpgulf.send_purchase.get_document_status",
+                        args: {
+                            invoice_name: frm.doc.name
+                        },
+                        freeze: true,
+                        freeze_message: __("Checking Document Status..."),
+                        callback: function (r) {
+                            if (r.message) {
+
+                                const envelope = r.message;
+                                const httpStatus =
+                                    envelope && typeof envelope === "object" && "http_status" in envelope
+                                        ? envelope.http_status
+                                        : undefined;
+                                const res =
+                                    envelope && typeof envelope === "object" && "response" in envelope
+                                        ? envelope.response
+                                        : envelope;
+
+                                const isArray = Array.isArray(res);
+                                const isObject = res && typeof res === "object" && !isArray;
+                                const primary = isArray ? (res[res.length - 1] || {}) : (isObject ? res : {});
+                                const nested = (primary && typeof primary === "object" && primary.data && typeof primary.data === "object")
+                                    ? primary.data
+                                    : {};
+
+                                const findKeyLike = (obj, patterns) => {
+                                    if (!obj || typeof obj !== "object") return undefined;
+                                    const keys = Object.keys(obj);
+                                    for (const p of patterns) {
+                                        for (const key of keys) {
+                                            if (p.test(key)) {
+                                                const value = obj[key];
+                                                if (value !== undefined && value !== null && value !== "") {
+                                                    return value;
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                return undefined;
-                            };
+                                    return undefined;
+                                };
 
-                            const documentId =
-                                findKeyLike(primary, [/^id$/i]) ??
-                                findKeyLike(nested, [/^id$/i]) ??
-                                "-";
-                            const status =
-                                findKeyLike(primary, [/status/i]) ??
-                                findKeyLike(nested, [/status/i]) ??
-                                "-";
+                                const documentId =
+                                    findKeyLike(primary, [/^id$/i]) ??
+                                    findKeyLike(nested, [/^id$/i]) ??
+                                    "-";
+                                const status =
+                                    findKeyLike(primary, [/status/i]) ??
+                                    findKeyLike(nested, [/status/i]) ??
+                                    "-";
 
-                            const rawJson = frappe.utils.escape_html(JSON.stringify(res, null, 2));
+                                const rawJson = frappe.utils.escape_html(JSON.stringify(res, null, 2));
 
-                            const isHttpSuccess =
-                                typeof httpStatus === "number" && httpStatus >= 200 && httpStatus < 300;
-                            const indicator = !isHttpSuccess
-                                ? "red"
-                                : (status === "reported" ? "green" : "orange");
+                                const isHttpSuccess =
+                                    typeof httpStatus === "number" && httpStatus >= 200 && httpStatus < 300;
+                                const indicator = !isHttpSuccess
+                                    ? "red"
+                                    : (status === "reported" ? "green" : "orange");
 
-                            const html = `
-                                <p><b>HTTP Status:</b> ${frappe.utils.escape_html(String(httpStatus ?? "-"))}</p>
-                                <p><b>Document ID:</b> ${frappe.utils.escape_html(String(documentId))}</p>
-                                <p><b>Status:</b> ${frappe.utils.escape_html(String(status))}</p>
-                                <p style="margin-top:12px;"><b>Response</b></p>
-                                <pre style="white-space:pre-wrap;background:#f6f8fa;padding:12px;border-radius:6px;max-height:400px;overflow:auto;font-size:12px;">${rawJson}</pre>
-                            `;
+                                const html = `
+                                    <p><b>HTTP Status:</b> ${frappe.utils.escape_html(String(httpStatus ?? "-"))}</p>
+                                    <p><b>Document ID:</b> ${frappe.utils.escape_html(String(documentId))}</p>
+                                    <p><b>Status:</b> ${frappe.utils.escape_html(String(status))}</p>
+                                    <p style="margin-top:12px;"><b>Response</b></p>
+                                    <pre style="white-space:pre-wrap;background:#f6f8fa;padding:12px;border-radius:6px;max-height:400px;overflow:auto;font-size:12px;">${rawJson}</pre>
+                                `;
 
-                            frappe.msgprint({
-                                title: __("Document Status"),
-                                message: html,
-                                indicator: indicator,
-                                wide: true
-                            });
+                                frappe.msgprint({
+                                    title: __("Document Status"),
+                                    message: html,
+                                    indicator: indicator,
+                                    wide: true
+                                });
 
-                            frm.reload_doc();
+                                frm.reload_doc();
+                            }
                         }
-                    }
+                    });
                 });
-            });
+            }
 
-            // Same "Get Document" dropdown as Sales Invoice
-            // (public/js/sales_invoice.js) - Marmin generates XML/PDF
-            // asynchronously, so this is how you fetch either manually once
-            // the ASP has actually finished (check "Get Document Status"
-            // first if unsure). XML and PDF share the same group name
-            // ("Get Document") so frm.add_custom_button renders them as ONE
-            // dropdown with two menu items, exactly like the Sales Invoice
-            // version - just with doctype: "Purchase Invoice" here.
-            frm.add_custom_button(__('XML'), function () {
-                frappe.call({
-                    method: "uae_erpgulf.uae_erpgulf.attach.get_document_xml",
-                    args: {
-                        doctype: "Purchase Invoice",
-                        invoice_name: frm.doc.name
-                    },
-                    freeze: true,
-                    freeze_message: __("Fetching Document XML..."),
-                    callback: function (r) {
-                        if (r.message && r.message.file_url) {
-                            frappe.msgprint({
-                                title: __("Document XML"),
-                                message: `<p>XML fetched and attached to this invoice.</p><p><a href="${r.message.file_url}" target="_blank">${__("Open XML")}</a></p>`,
-                                indicator: "green"
-                            });
-                            frm.reload_doc();
-                        }
-                    }
-                    // No custom error handling here on purpose - same as
-                    // Sales Invoice's version: attach.py's get_document_xml
-                    // throws the actual reason (e.g. not generated yet), so
-                    // frappe.call's default error dialog already shows
-                    // something useful.
-                });
-            }, __('Get Document'));
+            // Hide XML / PDF buttons if already attached
+            const attachments = (frm.get_docinfo() && frm.get_docinfo().attachments) || [];
+            const has_ext = (ext) => attachments.some(a =>
+                ((a.file_name || a.file_url || "").toLowerCase()).endsWith(ext)
+            );
+            const has_xml = has_ext(".xml");
+            const has_pdf = has_ext(".pdf");
 
-            frm.add_custom_button(__('PDF'), function () {
-                frappe.call({
-                    method: "uae_erpgulf.uae_erpgulf.attach.get_document_pdf",
-                    args: {
-                        doctype: "Purchase Invoice",
-                        invoice_name: frm.doc.name
-                    },
-                    freeze: true,
-                    freeze_message: __("Fetching Document PDF..."),
-                    callback: function (r) {
-                        if (r.message && r.message.file_url) {
-                            frappe.msgprint({
-                                title: __("Document PDF"),
-                                message: `<p>PDF fetched and attached to this invoice.</p><p><a href="${r.message.file_url}" target="_blank">${__("Open PDF")}</a></p>`,
-                                indicator: "green"
-                            });
-                            frm.reload_doc();
+            if (!has_xml) {
+                frm.add_custom_button(__('XML'), function () {
+                    frappe.call({
+                        method: "uae_erpgulf.uae_erpgulf.attach.get_document_xml",
+                        args: {
+                            doctype: "Purchase Invoice",
+                            invoice_name: frm.doc.name
+                        },
+                        freeze: true,
+                        freeze_message: __("Fetching Document XML..."),
+                        callback: function (r) {
+                            if (r.message && r.message.file_url) {
+                                frappe.msgprint({
+                                    title: __("Document XML"),
+                                    message: `<p>XML fetched and attached to this invoice.</p><p><a href="${r.message.file_url}" target="_blank">${__("Open XML")}</a></p>`,
+                                    indicator: "green"
+                                });
+                                frm.reload_doc();
+                            }
                         }
-                    }
-                });
-            }, __('Get Document'));
+                    });
+                }, __('Get Document'));
+            }
+
+            if (!has_pdf) {
+                frm.add_custom_button(__('PDF'), function () {
+                    frappe.call({
+                        method: "uae_erpgulf.uae_erpgulf.attach.get_document_pdf",
+                        args: {
+                            doctype: "Purchase Invoice",
+                            invoice_name: frm.doc.name
+                        },
+                        freeze: true,
+                        freeze_message: __("Fetching Document PDF..."),
+                        callback: function (r) {
+                            if (r.message && r.message.file_url) {
+                                frappe.msgprint({
+                                    title: __("Document PDF"),
+                                    message: `<p>PDF fetched and attached to this invoice.</p><p><a href="${r.message.file_url}" target="_blank">${__("Open PDF")}</a></p>`,
+                                    indicator: "green"
+                                });
+                                frm.reload_doc();
+                            }
+                        }
+                    });
+                }, __('Get Document'));
+            }
         }
     }
 });
-
 
 
 frappe.ui.form.on('Purchase Invoice', {

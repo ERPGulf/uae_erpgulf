@@ -1,27 +1,14 @@
-"""Flick Network L.L.C adapter.
-Every Flick-specific detail (URL paths, header names, payload/response
-shapes) lives here and nowhere else in the app. This is a straight move of
-the logic that used to be spread across verify_token.py / test.py /
-send_purchase.py / attach.py / webhook.py / customer.py - nothing about how
-it talks to Flick has changed, it's just now behind the same interface
-every other adapter uses.
-(participant.py used to be listed here too - it only ever held a thin
-update_flick_participant() wrapper with zero real callers anywhere in the
-app, so it's been removed rather than migrated.)
-"""
+"""Flick Network L.L.C adapter"""
 
 import json
 import frappe
 import requests
 from frappe import _
 from frappe.utils import now_datetime
-
 from uae_erpgulf.uae_erpgulf.providers.base import BaseAdapter
 
 
 class FlickAdapter(BaseAdapter):
-
-    # ---- auth ----
     def get_auth_headers(self, extra=None):
         headers = dict(extra or {})
         settings = self.settings
@@ -70,11 +57,6 @@ class FlickAdapter(BaseAdapter):
 
         if not access_token:
             frappe.throw(_("Access token not found in response"))
-
-        # expires_in (seconds) is the standard OAuth2 client_credentials
-        # field (RFC 6749) - use it when Flick sends it, so the cached TTL
-        # (and Token Expires At on the form) matches what Flick actually
-        # issued instead of the base class's flat 55-minute assumption.
         expires_in = response_json.get("expires_in")
         if isinstance(expires_in, (int, float)) and expires_in > 0:
             self.set_cached_token(access_token, expires_in_sec=int(expires_in))
@@ -191,14 +173,6 @@ class FlickAdapter(BaseAdapter):
             url = f"{base_url}/v1/{participant_id}/simulate/incoming"
         else:
             url = f"{base_url}/v1/{participant_id}/documents"
-
-        # Flick keeps ONLY its existing "<invoice>_uae_invoice.json" file
-        # (save_and_attach_invoice_json in json_einvoice.py, already saved
-        # before this ever runs) - no second file here. Every other ASP
-        # (Marmin now, and any of the ~34 more that get their own adapter
-        # later) calls self.save_outgoing_payload(doc, payload) instead,
-        # since none of them already have a docs-verified JSON file of
-        # their own the way Flick does.
         payload = {"document": json_data}
 
         response = requests.post(url, headers=headers, json=payload, timeout=120)
@@ -212,10 +186,7 @@ class FlickAdapter(BaseAdapter):
 
     def get_document_status(self, doctype, doc):
         """Return shape: always {"http_status": <int>, "response": <body>},
-        success or failure - matches Marmin's adapter (see its own
-        get_document_status docstring for why: so a failure here shows up
-        in the "Get Document Status" dialog with its real HTTP status
-        instead of escaping as Frappe's own generic red error box)."""
+        success or failure. If the primary call to documents/{id} returns an empty list"""
         settings = self.settings
         participant_id = settings.participant_id
         if not participant_id:
@@ -227,10 +198,6 @@ class FlickAdapter(BaseAdapter):
         response_data = json.loads(doc.custom_submit_response)
         submit_data = response_data.get("data", {})
         document_id = submit_data.get("id")
-        # Flick's own submit response carries a second identifier alongside
-        # its internal id - document_identifier, which is just this
-        # invoice's own name (doc.name). Falling back to doc.name here in
-        # case an older submit response predates that field being saved.
         document_identifier = submit_data.get("document_identifier") or doc.name
         if not document_id:
             frappe.throw(_("Document ID not found in submit response"))
@@ -401,17 +368,6 @@ class FlickAdapter(BaseAdapter):
             return {"raw_response": response.text}
 
 
-# ---- inbound webhook listener ----
-# Moved here from webhook.py (was uae_erpgulf.uae_erpgulf.webhook.
-# flick_webhook_listener - get_webhook_listener_url() above and
-# e_invoice_provider_settings.py's set_webhook_url() both point at the new
-# dotted path now). Everything else that used to live in webhook.py stayed
-# there because it's genuinely generic (calls get_adapter(settings).
-# register_webhook() etc.) - this is the one function that can't be, since
-# it's the endpoint Flick's own server posts a Flick-shaped JSON body to,
-# not something this app calls out to Flick. A future ASP with its own
-# webhook API needs its own listener function shaped around its own
-# payload, the same way this one is shaped around Flick's.
 @frappe.whitelist(allow_guest=True)  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
 def flick_webhook_listener():
     """Listener for Flick API webhooks. Logs incoming data and updates invoice status."""

@@ -1,3 +1,4 @@
+"""Shared helper for reading E-Invoice Provider Settings."""
 import frappe
 import re
 from decimal import Decimal, ROUND_HALF_UP

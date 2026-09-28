@@ -1,3 +1,4 @@
+"""get purchase invoice"""
 import frappe
 import json
 from frappe import _

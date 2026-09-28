@@ -1,19 +1,9 @@
-
+"""this file contains the functions to validations."""
 import frappe
 from frappe import _
 
 def validate_accredited_service_provider(doc, method=None):
-    """Runs before a Sales/Purchase Invoice is submitted. Makes sure the
-    company actually has e-invoicing set up for whichever provider it has
-    selected, before letting the invoice go through.
-
-    No provider name is checked here on purpose - any provider works the
-    same way. (This used to hardcode a check against "flick.network" and
-    "Flick Network L.L.C" directly in this shared file - that's exactly
-    the kind of provider-specific check that doesn't belong here, and it's
-    no longer needed now that each E-Invoice Provider Settings row already
-    ties one provider to its own base URL.)
-    """
+    """Runs before a Sales/Purchase Invoice is submitted. """
     company_doc = frappe.get_doc("Company", doc.company)
 
     if not company_doc.custom_uae_einvoice_enabled:
@@ -35,10 +25,7 @@ def validate_accredited_service_provider(doc, method=None):
             "Set up its credentials before submitting e-invoices."
         ).format(provider, doc.company))
 
-    # Validation 1: If Invoice out of scope of tax is checked,
-    # VAT Category must be "O - Not subject to VAT"
-
-
+  
 def success_log(
     title=None,
     document_id=None,

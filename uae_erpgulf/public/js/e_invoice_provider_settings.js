@@ -1,14 +1,3 @@
-// Replaces the "Verify Token" / "Get Access Token" / "Subscribe Webhook" /
-// "Get Subscription" / "Webhook Logs" buttons that used to live on Company
-// (see company.js) - now that credentials and webhook_uuid/secret live on
-// this row instead of Company, these buttons live here too. They call the
-// exact same server methods Company's buttons called (nothing changed on
-// the Python side) - just with frm.doc.company instead of frm.doc.name,
-// since this form's "company" field is the one those methods expect.
-//
-// No custom Button fields needed on this doctype for this - these are
-// added directly to the toolbar in refresh(), same as any custom button.
-
 frappe.ui.form.on("E-Invoice Provider Settings", {
     refresh: function (frm) {
         if (frm.is_new()) {

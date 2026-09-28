@@ -2,15 +2,6 @@ frappe.ui.form.on("Sales Invoice", {
     refresh(frm) {
 
         frm.clear_custom_buttons();
-
-        // Show button only if:
-        // 1. Invoice is Submitted (docstatus = 1)
-        // 2. UAE status is "Not Submitted"
-
-        // if (
-        //     frm.doc.docstatus === 1 &&
-        //     frm.doc.custom_uae_einvoice_status === "Not Submitted"
-        // ) {
         if (
             frm.doc.docstatus === 1 &&
             (
@@ -26,7 +17,7 @@ frappe.ui.form.on("Sales Invoice", {
                     frm.call({
                         method: "uae_erpgulf.uae_erpgulf.test.generate_and_send_einvoice",
                         args: {
-                            doc: frm.doc   // 🔥 IMPORTANT
+                            doc: frm.doc
                         },
                         freeze: true,
                         freeze_message: __("Generating and sending UAE E-Invoice..."),
@@ -47,205 +38,153 @@ frappe.ui.form.on("Sales Invoice", {
 frappe.ui.form.on("Sales Invoice", {
     refresh: function (frm) {
         if (!frm.doc.__islocal && frm.doc.custom_uae_einvoice_status !== "Not Submitted") {
-            frm.add_custom_button(__('Get Document Status'), function () {
-                frappe.call({
-                    method: "uae_erpgulf.uae_erpgulf.verify_token.get_document_status",
-                    args: {
-                        invoice_name: frm.doc.name
-                    },
-                    freeze: true,
-                    freeze_message: __("Checking Document Status..."),
-                    callback: function (r) {
-                        if (r.message) {
-                            // verify_token.py's get_document_status now always returns
-                            // {http_status, response} - the ASP's real HTTP status code
-                            // alongside its body - instead of just the bare body. That's
-                            // what lets this dialog show the status code and pick a real
-                            // "red" for an actual failed call, instead of every non-
-                            // "reported" case (including a perfectly normal 200 that's
-                            // just still processing) looking the same shade of orange.
-                            const envelope = r.message;
-                            const httpStatus =
-                                envelope && typeof envelope === "object" && "http_status" in envelope
-                                    ? envelope.http_status
-                                    : undefined;
-                            const res =
-                                envelope && typeof envelope === "object" && "response" in envelope
-                                    ? envelope.response
-                                    : envelope;
 
-                            // No fixed table of named fields anymore - different ASPs shape
-                            // this response too differently for that (Flick nests under
-                            // "data"; Marmin's peppol-status-logs has no confirmed shape at
-                            // all yet, and may well be a list of log entries rather than one
-                            // object). Just show the raw response always, and opportunistically
-                            // pull out a document id (any key that looks like "id"/"uuid") and a
-                            // single status line (any key that looks like "status") if either
-                            // is actually present - checked on the response itself, one level
-                            // of "data" nesting under it, and (if the response is a list) its
-                            // last entry, since that covers every shape seen so far without
-                            // hardcoding one ASP's field names.
-                            const isArray = Array.isArray(res);
-                            const isObject = res && typeof res === "object" && !isArray;
-                            const primary = isArray ? (res[res.length - 1] || {}) : (isObject ? res : {});
-                            const nested = (primary && typeof primary === "object" && primary.data && typeof primary.data === "object")
-                                ? primary.data
-                                : {};
+            // Hide Get Document Status once reported
+            const is_reported = (frm.doc.custom_reporting_status || "").toLowerCase() === "reported";
 
-                            // Loops patterns in the OUTER loop, keys in the inner one - so the
-                            // pattern list order is a real priority order, not just "whichever
-                            // key happens to come first in the object". That distinction
-                            // matters here: Marmin can have BOTH an "id" and a "document_id" key
-                            // on the same response, and Marmin's own convention (confirmed
-                            // against marmin/adapter.py's get_document_xml/get_document_status,
-                            // which always read response_data["id"]) is that "id" - never
-                            // "document_id" - is the real one. The previous version checked
-                            // patterns.some(...) per key in object key order, so a "document_id"
-                            // key appearing before "id" in the response would have won by
-                            // accident.
-                            const findKeyLike = (obj, patterns) => {
-                                if (!obj || typeof obj !== "object") return undefined;
-                                const keys = Object.keys(obj);
-                                for (const p of patterns) {
-                                    for (const key of keys) {
-                                        if (p.test(key)) {
-                                            const value = obj[key];
-                                            if (value !== undefined && value !== null && value !== "") {
-                                                return value;
+            if (!is_reported) {
+                frm.add_custom_button(__('Get Document Status'), function () {
+                    frappe.call({
+                        method: "uae_erpgulf.uae_erpgulf.verify_token.get_document_status",
+                        args: {
+                            invoice_name: frm.doc.name
+                        },
+                        freeze: true,
+                        freeze_message: __("Checking Document Status..."),
+                        callback: function (r) {
+                            if (r.message) {
+                                const envelope = r.message;
+                                const httpStatus =
+                                    envelope && typeof envelope === "object" && "http_status" in envelope
+                                        ? envelope.http_status
+                                        : undefined;
+                                const res =
+                                    envelope && typeof envelope === "object" && "response" in envelope
+                                        ? envelope.response
+                                        : envelope;
+                                const isArray = Array.isArray(res);
+                                const isObject = res && typeof res === "object" && !isArray;
+                                const primary = isArray ? (res[res.length - 1] || {}) : (isObject ? res : {});
+                                const nested = (primary && typeof primary === "object" && primary.data && typeof primary.data === "object")
+                                    ? primary.data
+                                    : {};
+
+                                const findKeyLike = (obj, patterns) => {
+                                    if (!obj || typeof obj !== "object") return undefined;
+                                    const keys = Object.keys(obj);
+                                    for (const p of patterns) {
+                                        for (const key of keys) {
+                                            if (p.test(key)) {
+                                                const value = obj[key];
+                                                if (value !== undefined && value !== null && value !== "") {
+                                                    return value;
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                return undefined;
-                            };
+                                    return undefined;
+                                };
 
-                            // Both ASPs' own adapters agree on this: Marmin's
-                            // get_document_xml/get_document_status (marmin/adapter.py) read
-                            // response_data["id"], and Flick's get_document_status/get_document_xml
-                            // (flick/adapter.py) read response_data["data"]["id"] - same plain
-                            // "id" field either way, just nested one level differently. Neither
-                            // ASP actually has a "document_id" or "uuid" field, so just look for
-                            // "id" - on the response itself and one level under "data" - instead
-                            // of guessing at names nothing really sends.
-                            const documentId =
-                                findKeyLike(primary, [/^id$/i]) ??
-                                findKeyLike(nested, [/^id$/i]) ??
-                                "-";
-                            const status =
-                                findKeyLike(primary, [/status/i]) ??
-                                findKeyLike(nested, [/status/i]) ??
-                                "-";
+                                const documentId =
+                                    findKeyLike(primary, [/^id$/i]) ??
+                                    findKeyLike(nested, [/^id$/i]) ??
+                                    "-";
+                                const status =
+                                    findKeyLike(primary, [/status/i]) ??
+                                    findKeyLike(nested, [/status/i]) ??
+                                    "-";
 
-                            const rawJson = frappe.utils.escape_html(JSON.stringify(res, null, 2));
+                                const rawJson = frappe.utils.escape_html(JSON.stringify(res, null, 2));
 
-                            // Real HTTP status code, not the reporting_status/status text
-                            // above - e.g. 200 vs a genuine 4xx/5xx from the ASP. Only
-                            // this decides red: a non-2xx is an actual failed call, while
-                            // "no reporting_status yet" on a 200 (document just hasn't
-                            // finished processing on the ASP's side) is still orange, not
-                            // an error.
-                            const isHttpSuccess =
-                                typeof httpStatus === "number" && httpStatus >= 200 && httpStatus < 300;
-                            const indicator = !isHttpSuccess
-                                ? "red"
-                                : (status === "reported" ? "green" : "orange");
+                                const isHttpSuccess =
+                                    typeof httpStatus === "number" && httpStatus >= 200 && httpStatus < 300;
+                                const indicator = !isHttpSuccess
+                                    ? "red"
+                                    : (status === "reported" ? "green" : "orange");
 
-                            const html = `
-                                <p><b>HTTP Status:</b> ${frappe.utils.escape_html(String(httpStatus ?? "-"))}</p>
-                                <p><b>Document ID:</b> ${frappe.utils.escape_html(String(documentId))}</p>
-                                <p><b>Status:</b> ${frappe.utils.escape_html(String(status))}</p>
-                                <p style="margin-top:12px;"><b>Response</b></p>
-                                <pre style="white-space:pre-wrap;background:#f6f8fa;padding:12px;border-radius:6px;max-height:400px;overflow:auto;font-size:12px;">${rawJson}</pre>
-                            `;
+                                const html = `
+                                    <p><b>HTTP Status:</b> ${frappe.utils.escape_html(String(httpStatus ?? "-"))}</p>
+                                    <p><b>Document ID:</b> ${frappe.utils.escape_html(String(documentId))}</p>
+                                    <p><b>Status:</b> ${frappe.utils.escape_html(String(status))}</p>
+                                    <p style="margin-top:12px;"><b>Response</b></p>
+                                    <pre style="white-space:pre-wrap;background:#f6f8fa;padding:12px;border-radius:6px;max-height:400px;overflow:auto;font-size:12px;">${rawJson}</pre>
+                                `;
 
-                            frappe.msgprint({
-                                title: __("Document Status"),
-                                message: html,
-                                indicator: indicator,
-                                wide: true
-                            });
+                                frappe.msgprint({
+                                    title: __("Document Status"),
+                                    message: html,
+                                    indicator: indicator,
+                                    wide: true
+                                });
 
-                            frm.reload_doc();
+                                frm.reload_doc();
+                            }
                         }
-                    }
+                    });
                 });
-            });
+            }
 
-            // Marmin generates XML asynchronously (a "not generated yet"
-            // response right after submit is normal, not a bug - see
-            // AUTO_FETCH_DOCUMENTS_ON_SUBMIT in providers/base.py), so
-            // unlike Flick, nothing fetches it automatically at submit time
-            // for Marmin. This button is how you fetch it manually once
-            // Marmin has actually finished - check "Get Document Status"
-            // first if you're not sure whether it's ready yet.
-            //
-            // XML and PDF share the group name below ("Get Document") -
-            // that's what makes frm.add_custom_button render them as ONE
-            // dropdown button with two menu items, instead of two separate
-            // buttons sitting side by side. "Get Document Status" above has
-            // no group, so it stays its own standalone button.
-            frm.add_custom_button(__('XML'), function () {
-                frappe.call({
-                    method: "uae_erpgulf.uae_erpgulf.attach.get_document_xml",
-                    args: {
-                        doctype: "Sales Invoice",
-                        invoice_name: frm.doc.name
-                    },
-                    freeze: true,
-                    freeze_message: __("Fetching Document XML..."),
-                    callback: function (r) {
-                        if (r.message && r.message.file_url) {
-                            frappe.msgprint({
-                                title: __("Document XML"),
-                                message: `<p>XML fetched and attached to this invoice.</p><p><a href="${r.message.file_url}" target="_blank">${__("Open XML")}</a></p>`,
-                                indicator: "green"
-                            });
-                            frm.reload_doc();
-                        }
-                    }
-                    // No custom error handling here on purpose - if the ASP
-                    // hasn't generated the XML yet (Marmin) or doesn't
-                    // support XML at all, attach.py's get_document_xml now
-                    // throws the ACTUAL reason (e.g. "Marmin API Error: XML
-                    // not generated for document ...") instead of a fixed
-                    // generic message, so frappe.call's default error
-                    // dialog already shows something useful.
-                });
-            }, __('Get Document'));
+            // Hide XML / PDF buttons if already attached
+            const attachments = (frm.get_docinfo() && frm.get_docinfo().attachments) || [];
+            const has_ext = (ext) => attachments.some(a =>
+                ((a.file_name || a.file_url || "").toLowerCase()).endsWith(ext)
+            );
+            const has_xml = has_ext(".xml");
+            const has_pdf = has_ext(".pdf");
 
-            // Marmin's PDF endpoint (download-pdf) - same async-generation
-            // caveat as XML above, so this stays a manual button rather
-            // than something auto-fetched at submit time. Same group as
-            // XML above ("Get Document") so this becomes the second menu
-            // item on that one dropdown button, not a separate button.
-            frm.add_custom_button(__('PDF'), function () {
-                frappe.call({
-                    method: "uae_erpgulf.uae_erpgulf.attach.get_document_pdf",
-                    args: {
-                        doctype: "Sales Invoice",
-                        invoice_name: frm.doc.name
-                    },
-                    freeze: true,
-                    freeze_message: __("Fetching Document PDF..."),
-                    callback: function (r) {
-                        if (r.message && r.message.file_url) {
-                            frappe.msgprint({
-                                title: __("Document PDF"),
-                                message: `<p>PDF fetched and attached to this invoice.</p><p><a href="${r.message.file_url}" target="_blank">${__("Open PDF")}</a></p>`,
-                                indicator: "green"
-                            });
-                            frm.reload_doc();
+            if (!has_xml) {
+                frm.add_custom_button(__('XML'), function () {
+                    frappe.call({
+                        method: "uae_erpgulf.uae_erpgulf.attach.get_document_xml",
+                        args: {
+                            doctype: "Sales Invoice",
+                            invoice_name: frm.doc.name
+                        },
+                        freeze: true,
+                        freeze_message: __("Fetching Document XML..."),
+                        callback: function (r) {
+                            if (r.message && r.message.file_url) {
+                                frappe.msgprint({
+                                    title: __("Document XML"),
+                                    message: `<p>XML fetched and attached to this invoice.</p><p><a href="${r.message.file_url}" target="_blank">${__("Open XML")}</a></p>`,
+                                    indicator: "green"
+                                });
+                                frm.reload_doc();
+                            }
                         }
-                    }
-                    // Same reasoning as Get Document XML above - attach.py's
-                    // get_document_pdf now throws the real reason, so no
-                    // custom error handling needed here either.
-                });
-            }, __('Get Document'));
+                        // No custom error handling on purpose - attach.py throws
+                        // the actual ASP reason, and frappe.call's default error
+                        // dialog shows it.
+                    });
+                }, __('Get Document'));
+            }
+
+            if (!has_pdf) {
+                frm.add_custom_button(__('PDF'), function () {
+                    frappe.call({
+                        method: "uae_erpgulf.uae_erpgulf.attach.get_document_pdf",
+                        args: {
+                            doctype: "Sales Invoice",
+                            invoice_name: frm.doc.name
+                        },
+                        freeze: true,
+                        freeze_message: __("Fetching Document PDF..."),
+                        callback: function (r) {
+                            if (r.message && r.message.file_url) {
+                                frappe.msgprint({
+                                    title: __("Document PDF"),
+                                    message: `<p>PDF fetched and attached to this invoice.</p><p><a href="${r.message.file_url}" target="_blank">${__("Open PDF")}</a></p>`,
+                                    indicator: "green"
+                                });
+                                frm.reload_doc();
+                            }
+                        }
+                    });
+                }, __('Get Document'));
+            }
         }
     }
 });
-
 
 frappe.ui.form.on("Sales Invoice", {
     refresh(frm) {
