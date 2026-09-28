@@ -16,7 +16,7 @@ frappe.ui.form.on("E-Invoice Provider Settings", {
 
         frm.add_custom_button(__("Verify Token"), function () {
             frappe.call({
-                method: "uae_erpgulf.uae_erpgulf.verify_token.verify_flick_token",
+                method: "uae_erpgulf.uae_erpgulf.verify_token.verify_auth",
                 args: { company: frm.doc.company, provider_settings: frm.doc.name },
                 freeze: true,
                 freeze_message: __("Verifying..."),
@@ -41,7 +41,7 @@ frappe.ui.form.on("E-Invoice Provider Settings", {
 
         frm.add_custom_button(__("Get Access Token"), function () {
             frappe.call({
-                method: "uae_erpgulf.uae_erpgulf.verify_token.get_flick_access_token",
+                method: "uae_erpgulf.uae_erpgulf.verify_token.get_access_token",
                 args: { company: frm.doc.company, provider_settings: frm.doc.name },
                 freeze: true,
                 freeze_message: __("Fetching Access Token..."),
@@ -60,7 +60,7 @@ frappe.ui.form.on("E-Invoice Provider Settings", {
 
         frm.add_custom_button(__("Subscribe Webhook"), function () {
             frappe.call({
-                method: "uae_erpgulf.uae_erpgulf.webhook.register_flick_webhook",
+                method: "uae_erpgulf.uae_erpgulf.webhook.register_webhook",
                 args: { company: frm.doc.company, provider_settings: frm.doc.name },
                 freeze: true,
                 freeze_message: __("Subscribing Webhook..."),

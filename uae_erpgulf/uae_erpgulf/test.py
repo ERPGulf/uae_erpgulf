@@ -4,7 +4,6 @@ import json
 import requests
 import time
 from frappe import _
-from uae_erpgulf.uae_erpgulf.json_einvoice import send_invoice_json
 from uae_erpgulf.uae_erpgulf.provider_settings import get_active_provider_settings
 from uae_erpgulf.uae_erpgulf.providers import get_adapter
 from uae_erpgulf.uae_erpgulf.attach import get_document_xml
@@ -18,72 +17,8 @@ def send_invoice_to_provider(doc, method=None):
         settings = get_active_provider_settings(doc.company)
         adapter = get_adapter(settings)
 
-        json_data = None
-        if getattr(adapter, "USES_SHARED_INVOICE_JSON", True):
-            files = frappe.get_all(
-                "File",
-                filters={
-                    "attached_to_doctype": "Sales Invoice",
-                    "attached_to_name": doc.name,
-                    "file_name": ["like", "%_uae_invoice.json"],
-                },
-                fields=["file_url", "file_name"],
-            )
-            json_file = files[0] if files else None
+        status_code, response_data = adapter.submit_invoice("Sales Invoice", doc)
 
-            if not json_file:
-                frappe.throw(_("No JSON attachment found."))
-            file_doc = frappe.get_doc("File", {"file_url": json_file.file_url})
-            file_path = file_doc.get_full_path()
-
-            with open(file_path, "r", encoding="utf-8") as f: # nosemgrep: frappe-security-file-traversal
-                json_data = json.load(f)
-
-        status_code, response_data = adapter.submit_invoice("Sales Invoice", doc, json_data)
-
-        data = response_data.get("data", {}) if isinstance(response_data, dict) else {}
-        message = response_data.get("message", "-") if isinstance(response_data, dict) else "-"
-        api_status = response_data.get("status", "-") if isinstance(response_data, dict) else "-"
-
-        html = """
-            <table border="1" cellpadding="8" cellspacing="0"
-                style="border-collapse:collapse;width:100%;font-size:13px;">
-                <thead>
-                    <tr style="background-color:#f0f4f7;">
-                        <th style="padding:8px 12px;text-align:left;border:1px solid #d1d8dd;">Field</th>
-                        <th style="padding:8px 12px;text-align:left;border:1px solid #d1d8dd;">Value</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;"><b>API Status</b></td>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;">{api_status}</td>
-                    </tr>
-                    <tr style="background-color:#f9f9f9;">
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;"><b>Message</b></td>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;">{message}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;"><b>Document ID</b></td>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;">{doc_id}</td>
-                    </tr>
-                    <tr style="background-color:#f9f9f9;">
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;"><b>Processing Status</b></td>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;">{proc_status}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;"><b>Reporting Status</b></td>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;">{rep_status}</td>
-                    </tr>
-                </tbody>
-            </table>
-            """.format(
-                api_status=api_status,
-                message=message,
-                doc_id=data.get('id', '-'),
-                proc_status=data.get('status', '-'),
-                rep_status=data.get('reporting_status', '-')
-            )
         if isinstance(response_data, (dict, list)):
             pretty_response = json.dumps(response_data, indent=2)
         else:
@@ -127,10 +62,6 @@ def generate_and_send_einvoice(doc: Union[Document, str], method: Optional[str] 
     try:
         settings = get_active_provider_settings(doc.company)
         adapter = get_adapter(settings)
-        if getattr(adapter, "USES_SHARED_INVOICE_JSON", True):
-            json_response = send_invoice_json(doc.name)
-            if not json_response:
-                frappe.throw(_("Failed to generate eInvoice JSON"))
 
         status_code, response_data = send_invoice_to_provider(doc)
         if isinstance(response_data, dict):
@@ -138,23 +69,11 @@ def generate_and_send_einvoice(doc: Union[Document, str], method: Optional[str] 
         else:
             response_text = str(response_data)
 
-        invoice_status = "Not Submitted"
-        reporting_status = None
-        document_id = None
-
-        
-        if isinstance(response_data, dict):
-            data = response_data.get("data", {})
-            reporting_status = data.get("reporting_status") or response_data.get("reporting_status")
-            document_id = data.get("id") or response_data.get("id")
-
-        if status_code in (200, 201):
-            if isinstance(response_data, dict):
-                if response_data.get("status") in ["success", "processed", "accepted"] or document_id:
-                    invoice_status = "Success"
-            else:
-                invoice_status = "Success"
-        # Save
+        parsed = adapter.parse_submit_response(status_code, response_data)
+        document_id = parsed.get("document_id")
+        reporting_status = parsed.get("reporting_status")
+        exchange_status = parsed.get("exchange_status")
+        invoice_status = "Success" if parsed.get("success") else "Not Submitted"
 
         doc.db_set("custom_submit_response", response_text)
         if status_code in (200, 201) and getattr(
@@ -194,14 +113,7 @@ def generate_and_send_einvoice(doc: Union[Document, str], method: Optional[str] 
         if document_id:
             doc.db_set("custom_document_id", document_id)
         frappe.db.commit()
-        exchange_status = None
-
-        if isinstance(response_data, dict):
-            data = response_data.get("data", {})
-            exchange_status = data.get("exchange_status")
         if status_code in (200, 201):
-            settings = get_active_provider_settings(doc.company)
-
             success_log(
                 title="UAE E-Invoice Submitted Successfully",
                 document_id=document_id,
@@ -212,9 +124,6 @@ def generate_and_send_einvoice(doc: Union[Document, str], method: Optional[str] 
                 status=invoice_status,
                 submit_response=response_text,
             )
-        # frappe.msgprint(
-        #     _("Flick Response Stored. Status: {0}").format(invoice_status)
-        # )
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "UAE eInvoice Submit Error")

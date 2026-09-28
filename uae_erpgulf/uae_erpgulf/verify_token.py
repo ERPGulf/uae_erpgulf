@@ -17,7 +17,7 @@ def get_auth_headers(settings, extra=None):
 
 
 @frappe.whitelist(allow_guest=False)
-def verify_flick_token(company: str = None, provider_settings: str = None):
+def verify_auth(company: str = None, provider_settings: str = None):
 	"""Verify auth for a specific E-Invoice Provider Settings row """
 	settings = get_settings_for_action(company, provider_settings)
 	result = get_adapter(settings).verify_auth()
@@ -41,7 +41,7 @@ def get_participant_details(company: str = None, provider_settings: str = None):
 
 
 @frappe.whitelist(allow_guest=False)
-def get_flick_access_token(company: str = None, provider_settings: str = None):
+def get_access_token(company: str = None, provider_settings: str = None):
 	"""Fetch (or reuse the cached) OAuth2 access token for a specific row"""
 	settings = get_settings_for_action(company, provider_settings)
 	adapter = get_adapter(settings)
@@ -55,10 +55,16 @@ def get_flick_access_token(company: str = None, provider_settings: str = None):
 	return {"access_token": token, "expires_at": str(expiry) if expiry else None}
 
 
-def get_valid_flick_token(company):
+def get_valid_token(company):
 	"""Return a valid access token for this company's active provider"""
 	settings = get_active_provider_settings(company)
 	return get_adapter(settings).get_valid_token()
+
+
+# ---- old Flick-named paths, kept so anything still calling them keeps working ----
+verify_flick_token = verify_auth
+get_flick_access_token = get_access_token
+get_valid_flick_token = get_valid_token
 
 
 @frappe.whitelist()
@@ -88,9 +94,8 @@ def get_document_status(invoice_name: str):
 
 		
 		reporting_status = result.get("reporting_status") if isinstance(result, dict) else None
-		if not reporting_status and isinstance(body, dict):
-			data = body.get("data", {})
-			reporting_status = data.get("reporting_status") or body.get("reporting_status")
+		if not reporting_status:
+			reporting_status = adapter.get_status_from_document_status(body)
 		if reporting_status:
 			sales_invoice_doc.db_set("custom_reporting_status", reporting_status)
 

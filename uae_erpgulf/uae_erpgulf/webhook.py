@@ -6,14 +6,12 @@ from uae_erpgulf.uae_erpgulf.provider_settings import (
     save_last_response,
 )
 from uae_erpgulf.uae_erpgulf.providers import get_adapter
-from uae_erpgulf.uae_erpgulf.providers.flick.adapter import (
-    flick_webhook_listener as _flick_webhook_listener,
-)
 
-@frappe.whitelist(allow_guest=True)  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
-def flick_webhook_listener():
-    """Kept for backward compatibility - the real one is now in providers/flick/adapter.py"""
-    return _flick_webhook_listener()
+# Backward compatibility only: webhook subscriptions registered before the
+# listener moved still POST to uae_erpgulf.uae_erpgulf.webhook.flick_webhook_listener.
+# The real listener is providers/flick/adapter.py. Delete this import once
+# every company has re-registered its webhook (Register Webhook button).
+from uae_erpgulf.uae_erpgulf.providers.flick.adapter import flick_webhook_listener  # noqa: E402,F401
 
 
 def update_webhook_logs():
@@ -34,7 +32,7 @@ def update_webhook_logs():
             )
 
 @frappe.whitelist(allow_guest=False)
-def register_flick_webhook(company: str = None, provider_settings: str = None):
+def register_webhook(company: str = None, provider_settings: str = None):
     """Register (or re-register) the webhook subscription """
     settings = get_settings_for_action(company, provider_settings)
     result = get_adapter(settings).register_webhook()
@@ -64,3 +62,7 @@ def get_webhook_deliveries(company: str = None, provider_settings: str = None):
     save_last_response(settings, "last_webhook_logs_response", result)
 
     return result
+
+
+# old Flick-named path, kept so anything still calling it keeps working
+register_flick_webhook = register_webhook

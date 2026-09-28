@@ -1,0 +1,1029 @@
+"""Flick only - builds the PEPPOL-style JSON body Flick expects for a Purchase Invoice."""
+import frappe
+import re
+from decimal import Decimal, ROUND_HALF_UP
+from datetime import datetime
+from frappe import _
+from uae_erpgulf.uae_erpgulf.country_code import country_code_mapping
+import json
+from datetime import timedelta
+from decimal import Decimal, ROUND_HALF_UP
+
+def r2(val):
+    return str(Decimal(val).quantize(Decimal("0.01"), ROUND_HALF_UP))
+
+
+def get_icv_code(invoice_number):
+    """
+    Extracts the numeric part from the invoice number to generate the ICV code.
+    """
+    try:
+        return re.sub(r"\D", "", invoice_number)
+    except TypeError as e:
+        frappe.throw(_("Type error in getting ICV number: " + str(e)))
+    except re.error as e:
+        frappe.throw(_("Regex error in getting ICV number: " + str(e)))
+
+
+def get_line_extension_amount(sales_invoice_doc):
+    """Calculates line extension amount based on whether taxes are included in print rate and if discount is applied."""
+    if not sales_invoice_doc.taxes or sales_invoice_doc.taxes[0].included_in_print_rate == 0:
+        line_extension_amount = str(round(abs(sales_invoice_doc.total), 2))
+    else:
+        if sales_invoice_doc.discount_amount:
+            line_extension_amount = str(
+                round(
+                    abs(
+                        sales_invoice_doc.base_net_total
+                        + sales_invoice_doc.get("discount_amount", 0.0)
+                    ),
+                    2,
+                )
+            )
+        else:
+            line_extension_amount = str(
+                round(abs(sales_invoice_doc.base_net_total), 2)
+            )
+    return line_extension_amount
+
+
+def get_tax_exc(sales_invoice_doc):
+    """Calculates tax exclusive amount based on whether taxes are included in print rate and if discount is applied."""
+    if sales_invoice_doc.taxes[0].included_in_print_rate == 0:
+            tax_exclusive_amount = str(
+                round(
+                    abs(
+                        sales_invoice_doc.total
+                        - sales_invoice_doc.get("discount_amount", 0.0)
+                    ),
+                    2,
+                )
+            )
+    else:
+        if sales_invoice_doc.discount_amount ==0:
+            tax_exclusive_amount = str(
+                round(
+                    abs(
+                        sales_invoice_doc.base_net_total
+                        - sales_invoice_doc.get("discount_amount", 0.0)
+                    ),
+                    2,
+                )
+            )
+        else:
+            tax_exclusive_amount = str(
+                round(
+                    abs(
+                        sales_invoice_doc.base_net_total
+                    ),
+                    2,
+                )
+            )
+    return tax_exclusive_amount
+
+def get_tax_inclusive(sales_invoice_doc):
+    if sales_invoice_doc.taxes[0].included_in_print_rate == 0:
+            taxable_amount_1 = sales_invoice_doc.total - sales_invoice_doc.get(
+                "discount_amount", 0.0
+            )
+    else:
+        taxable_amount_1 = (
+            sales_invoice_doc.base_net_total
+            - sales_invoice_doc.get("discount_amount", 0.0)
+        )
+    tax_amount_without_retention = (
+        taxable_amount_1 * float(sales_invoice_doc.taxes[0].rate) / 100
+    )
+    if sales_invoice_doc.taxes[0].included_in_print_rate == 0:
+        tax_inclusive_amount = str(
+            round(
+                abs(
+                    sales_invoice_doc.total
+                    - sales_invoice_doc.get("discount_amount", 0.0)
+                )
+                + abs(tax_amount_without_retention),
+                2,
+            )
+        )
+    else:
+        if sales_invoice_doc.discount_amount ==0:
+
+            tax_inclusive_amount = str(
+                round(
+                    abs(
+                        sales_invoice_doc.base_net_total
+                        - sales_invoice_doc.get("discount_amount", 0.0)
+                    )
+                    + abs(tax_amount_without_retention),
+                    2,
+                )
+            )
+        else:
+            tax_inclusive_amount = str(
+                round(
+                    abs(
+                        sales_invoice_doc.base_net_total
+                    )
+                    + abs(tax_amount_without_retention),
+                    2,
+                )
+            )
+    return tax_inclusive_amount
+
+
+def get_payable_amount(sales_invoice_doc):
+    """Calculates the total payable amount based on whether taxes are included in print rate and if discount is applied."""
+    if sales_invoice_doc.taxes[0].included_in_print_rate == 0:
+            taxable_amount_1 = sales_invoice_doc.total - sales_invoice_doc.get(
+                "discount_amount", 0.0
+            )
+    else:
+        taxable_amount_1 = (
+            sales_invoice_doc.base_net_total
+            - sales_invoice_doc.get("discount_amount", 0.0)
+        )
+    tax_amount_without_retention = (
+        taxable_amount_1 * float(sales_invoice_doc.taxes[0].rate) / 100
+    )
+    if sales_invoice_doc.taxes[0].included_in_print_rate == 0:
+        total_amount = round(
+            abs(
+                sales_invoice_doc.total
+                - sales_invoice_doc.get("discount_amount", 0.0)
+            )
+            + abs(tax_amount_without_retention),
+            2,
+        )
+    else:
+        if sales_invoice_doc.discount_amount ==0:
+            total_amount = round(
+                abs(
+                    sales_invoice_doc.base_net_total
+                    - sales_invoice_doc.get("discount_amount", 0.0)
+                )
+                + abs(tax_amount_without_retention),
+                2,
+            )
+        else:
+            total_amount=round(
+                abs(
+                    sales_invoice_doc.base_net_total
+                )
+                + abs(tax_amount_without_retention),
+                2,
+            )
+    return total_amount
+
+
+
+def get_invoice_type_code(sales_invoice_doc):
+    """
+    Returns invoice_type_code based on Purchase Invoice flags:
+    """
+    if sales_invoice_doc.is_return == 1:
+        return "361"
+    
+    return "389"
+
+def get_due_date(sales_invoice_doc, issue_date):
+    """
+    IBT-009 / ibr-127-ae compliant due date resolver
+    """
+    if sales_invoice_doc.is_return == 1:
+        return None
+   
+    if getattr(sales_invoice_doc, "custom_invoice_transaction_type_code", None) == "X1XXXXX : Deemed supply transaction":
+        return None
+    if sales_invoice_doc.outstanding_amount > 0:
+        if not sales_invoice_doc.due_date:
+            frappe.throw(_(
+                "Payment Due Date (IBT-009) is mandatory when Outstanding Amount > 0"
+            ))
+        if sales_invoice_doc.due_date < issue_date:
+            frappe.throw(_(
+                "Payment Due Date must be equal to or after the Issue Date"
+            ))
+        return sales_invoice_doc.due_date.strftime("%Y-%m-%d")
+    return None
+
+def get_invoice_period(sales_invoice_doc):
+    """
+    IBG-14 / UAE compliant InvoicePeriod resolver
+    """
+    ALLOWED_DESCRIPTION_CODES = {
+        "DLY", "WKY", "Q15", "MTH", "Q45",
+        "Q60", "QTR", "YRL", "HYR", "OTH"
+    }
+    start_date = sales_invoice_doc.posting_date
+    end_date = sales_invoice_doc.due_date
+    description_code = sales_invoice_doc.custom_frequency_billing_code_list
+    if start_date and end_date and not description_code:
+        frappe.throw(_(
+            "Please select a Frequency of Billing (Invoice Period Description Code)"
+        ))
+    if description_code and description_code not in ALLOWED_DESCRIPTION_CODES:
+        frappe.throw(_(
+            f"Invalid Invoice Period Description Code: {description_code}"
+        ))
+    if end_date and not start_date:
+        frappe.throw(_(             
+            "Invoice Period Start Date is mandatory when End Date is provided"
+        ))
+
+    if getattr(sales_invoice_doc, "custom_invoice_transaction_type_code", None) == "X1XXXXX : Deemed supply transaction":
+        if not start_date or not end_date or not description_code:
+            frappe.throw(_(
+                "Invoice Period (Start Date, End Date and Frequency) "
+                "is mandatory for Summary Invoices"
+            ))
+    if not start_date and not end_date:
+        return None
+
+    return {
+        "start_date": start_date.strftime("%Y-%m-%d") if start_date else None,
+        "end_date": end_date.strftime("%Y-%m-%d") if end_date else None,
+        "description_code": description_code
+    }
+
+def get_invoice_notes(sales_invoice_doc):
+    """
+    IBT-022 / ibr-160-ae compliant Invoice Note resolver
+    """
+    frequency_code = sales_invoice_doc.custom_frequency_billing_code_list
+    invoice_note = getattr(sales_invoice_doc, "custom_invoice_note", None)
+    if frequency_code == "OTH" and not invoice_note:
+        frappe.throw(_(
+            "Invoice Note (IBT-022) is mandatory when Frequency of Billing is 'OTH'"
+        ))
+    return invoice_note
+
+def get_issue_time(sales_invoice_doc):
+    issue_time = sales_invoice_doc.posting_time
+    if not issue_time:
+        return None
+    if isinstance(issue_time, timedelta):
+        total_seconds = int(issue_time.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    return issue_time.strftime("%H:%M:%S")
+
+
+def get_tax_point_date(sales_invoice_doc):
+    """
+    Returns tax_point_date as due_date (if available),
+    but NOT for credit notes and must be before issue date.
+    """
+    if sales_invoice_doc.is_return == 1:
+        return None
+    if not sales_invoice_doc.due_date:
+        return None
+    issue_date = sales_invoice_doc.posting_date
+    tax_point_date =  issue_date - timedelta(days=1)
+    if tax_point_date >= issue_date:
+        frappe.throw(_("Tax Point Date must be before Invoice Issue Date"))
+
+    return tax_point_date.strftime("%Y-%m-%d")
+
+
+
+def get_currency_exchange_rate(sales_invoice_doc):
+    """
+    Returns currency exchange rate (cbc:ExchangeRate) for AED conversion
+    """
+    invoice_currency = sales_invoice_doc.currency
+    if invoice_currency == "AED":
+        return None
+    exchange_rate = sales_invoice_doc.conversion_rate
+    if not exchange_rate:
+        frappe.throw(_("Currency exchange rate is mandatory when invoice currency is not AED"))
+    exchange_rate = Decimal(exchange_rate).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    return float(exchange_rate)
+
+
+
+def get_document_currency(sales_invoice_doc):
+    """
+    Returns document currency code (cbc:DocumentCurrencyCode)
+    """
+    currency = sales_invoice_doc.currency
+    if not currency:
+        frappe.throw(_("Invoice currency code (IBT-005) is mandatory"))
+    if not isinstance(currency, str) or len(currency) != 3 or not currency.isalpha():
+        frappe.throw(
+            _("Invoice currency code must be a valid ISO 4217 alpha-3 code")
+        )
+    return currency.upper()
+
+def get_transaction_type_code(sales_invoice_doc):
+    """
+    Extracts the 7-char transaction type pattern
+    """
+    raw = getattr(
+        sales_invoice_doc,
+        "custom_invoice_transaction_type_code",
+        None
+    )
+    if not raw:
+        return None
+    return raw.split(":")[0].strip()
+
+
+
+
+def validate_receiving_party_fields(
+    sales_invoice_doc,
+    customer_doc,
+    address_data,
+    transaction_type_code,
+    # items
+):
+    """Performs validations on the receiving party (customer) fields based."""
+    errors = []
+
+    is_credit_note = sales_invoice_doc.is_return == 1
+    
+
+
+    if not customer_doc.supplier_name:
+        errors.append("IBR-007: Legal name (IBT-044) MUST be provided")
+    if not address_data.address_line1:
+        errors.append("IBR-144-ae: Address line 1 (IBT-050) MUST be provided")
+    if not address_data.city:
+        errors.append("IBR-144-ae: City (IBT-052) MUST be provided")
+    if not address_data.emirate:
+        errors.append("IBR-144-ae: Country subdivision / Emirate (IBT-054) MUST be provided")
+    if not address_data.pincode:
+        errors.append("postal zone MUST be provided")
+    if not address_data.country:
+        errors.append("IBR-008: Country code (IBT-055) MUST be provided")
+    if not address_data.email_id:
+        errors.append("IBR-011: Electronic email id (IBT-049) MUST be provided")
+    if is_credit_note :
+        if not customer_doc.custom_trade_license_number:
+            errors.append(
+                "IBR-136-ae: Legal registration identifier (IBT-047) "
+                "MUST be present for Credit Note or Out of Scope invoice"
+            )
+    if transaction_type_code != "XXXXXXX1":  # Not export
+        if not customer_doc.tax_id and not customer_doc.custom_trade_license_number:
+            errors.append(
+                "IBR-135-ae: Either VAT identifier (IBT-048) "
+                "or legal identifier (IBT-046) MUST be present"
+            )
+
+    # for item in items:
+    #     if item.get("vat_category") == "Reverse Charge":
+    #         if not customer_doc.tax_id:
+    #             errors.append(
+    #                 "IBR-103-ae: VAT identifier (IBT-048) MUST be provided "
+    #                 "for Reverse Charge items"
+    #             )
+    #         break
+    if transaction_type_code and transaction_type_code.startswith("1"):
+        if not customer_doc.custom_fz_beneficiary_id:
+            errors.append(
+                "IBR-007-ae: FZ Beneficiary ID (BTAE-01) MUST be provided "
+                "for Free Trade Zone transaction"
+            )
+    if errors:
+        frappe.throw("<br>".join(errors))
+
+
+def get_item_data(sales_invoice_doc, vat_rate):
+    """Builds the invoice lines with tax and classification details, while performing necessary validations."""
+    total_net = Decimal(0)
+    total_tax = Decimal(0)
+    invoice = {"invoice_lines": []}
+
+    def r2(val):
+        return float(Decimal(val).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+    # First, check if any item has an Item Tax Template
+    any_item_tax_template = any(item.item_tax_template for item in sales_invoice_doc.items)
+
+    for idx, item in enumerate(sales_invoice_doc.items, 1):
+        # Validation
+        if item.qty <= 0 and not sales_invoice_doc.is_return:
+            frappe.throw(_(f"Invoiced quantity must be greater than zero for item {item.item_name}"))
+
+        if not item.custom_item_type_codes:
+            frappe.throw(_("Item type (Goods / Services / Both) missing for item {item.item_name}"))
+        if item.custom_item_type_codes == "G - Goods" and not item.custom_hs_code_:
+            frappe.throw(_("HS code missing for item {item.item_name}"))
+
+        if item.custom_item_type_codes == "S - Services" and not item.custom_sac_code:
+            frappe.throw(_("SAC code missing for item {item.item_name}"))
+
+        if item.custom_item_type_codes == "B - Both" and (not item.custom_hs_code_ or not item.custom_sac_code):
+            frappe.throw(_("HS/SAC code missing for item {item.item_name}"))
+
+        # If any item has an item tax template, enforce it for all
+        if any_item_tax_template and not item.item_tax_template:
+            frappe.throw(_("Item {item.item_name} must have an Item Tax Template because other items have one."))
+
+        # Classification & commodity
+        if item.custom_item_type_codes == "G - Goods":
+            classification_code = item.custom_hs_code_
+            hs_code = item.custom_hs_code_
+            sac_code = None
+            commodity_code = "G"
+        elif item.custom_item_type_codes == "S - Services":
+            classification_code = item.custom_sac_code
+            hs_code = None
+            sac_code = item.custom_sac_code
+            commodity_code = "S"
+        elif item.custom_item_type_codes == "B - Both":
+            classification_code = item.custom_hs_code_  # HS primary
+            hs_code = item.custom_hs_code_
+            sac_code = item.custom_sac_code
+            commodity_code = "B"
+
+        # Amounts
+        net = Decimal(item.amount)
+        total_net += net
+
+        # Determine VAT category and percentage
+        if item.item_tax_template:
+            item_tax_template = frappe.get_doc("Item Tax Template", item.item_tax_template)
+            vat_category = item_tax_template.custom_vat_category or sales_invoice_doc.custom_vat_category
+            if item_tax_template.taxes:
+                tax_rate = item_tax_template.taxes[0].tax_rate
+            else:
+                tax_rate = vat_rate
+        else:
+            vat_category = sales_invoice_doc.custom_vat_category
+            tax_rate = vat_rate
+
+        if item.item_tax_template:
+            exemption_reason = (
+                item_tax_template.custom_vat_exemption_reason_code
+            )
+            rcm_nature_code = (
+                item_tax_template.custom_rcm_nature_code
+            )
+        else:
+            exemption_reason = sales_invoice_doc.custom_vat_exemption_reason_code
+            rcm_nature_code = sales_invoice_doc.custom_rcm_nature_code
+            
+        tax = net * Decimal(tax_rate) / Decimal(100)
+        total_tax += tax
+
+        # Invoice line
+        invoice_line = {
+            "id": str(idx),
+            "note": "Please check the invoice",
+            "invoiced_quantity": str(item.qty),
+            "uom": item.uom,
+            "line_extension_amount": get_item_line_extension_amount(item),
+            "accounting_cost": item.cost_center,
+            "name": item.item_name,
+            "description": item.description,
+            "commodity_code": commodity_code,
+            "hs_code": hs_code,
+            "sac_code": sac_code,
+            "vat_category": get_vat_category_code(vat_category),
+            "vat_percentage": r2(tax_rate),
+            "unit_price": r2(item.rate),
+            "base_quantity": "1"
+            # "line_extension_amount": get_item_line_extension_amount(item)
+        }
+        vat_category_code = get_vat_category_code(vat_category)
+
+        if vat_category_code == "E" and exemption_reason:
+            invoice_line["vat_exemption_reason_code"] = exemption_reason.split(" - ")[0]
+
+        elif vat_category_code == "AE" and rcm_nature_code:
+            invoice_line["rcm_nature_code"] = rcm_nature_code.split(" - ")[0]
+        invoice["invoice_lines"].append(invoice_line)
+
+    return invoice, total_net, total_tax
+        
+def get_payment_means(sales_invoice_doc):
+    """
+    UAE / PEPPOL compliant PaymentMeans builder
+    """
+    if sales_invoice_doc.is_return == 1:
+        return None
+    if getattr(
+        sales_invoice_doc,
+        "custom_invoice_transaction_type_code",
+        None
+    ) == "X1XXXXX : Deemed supply transaction":
+        return None
+
+    payment_option = sales_invoice_doc.custom_payment_means_codes
+
+    if not payment_option:
+        frappe.throw(_("Payment means type code (IBT-081) is mandatory"))
+    payment_code, payment_name = payment_option.split(" - ", 1)
+
+    APPROVED_PAYMENT_MEANS = {
+        "1": "Instrument not defined",
+        "10": "Cash",
+        "20": "Cheque",
+        "30": "Credit transfer",
+        "31": "Debit transfer",
+        "42": "Payment to bank account",
+        "48": "Bank card",
+        "49": "Direct debit",
+        "55": "Debit card",
+        "58": "SEPA credit transfer",
+    }
+    if payment_code not in APPROVED_PAYMENT_MEANS:
+        frappe.throw(_(
+            f"Invalid payment means code {payment_code}. "
+            f"Must be from UN/ECE 4461 approved subset."
+        ))
+
+    payment_means = {
+        "payment_means_code": payment_code,
+        "payment_means_code_name": payment_name,
+    }
+    if payment_code in ("30", "58"):
+        if not sales_invoice_doc.company_bank_account:
+            frappe.throw(
+                _("Payment account bank (IBT-084) is mandatory for Credit Transfer")
+            )
+
+        bank = frappe.get_doc(
+            "Bank Account",
+            sales_invoice_doc.company_bank_account
+        )
+
+        payment_means["payee_financial_account"] = {
+            "id": bank.bank_account_no,
+            "id_scheme_id": "IBAN",
+            "name": bank.account_name,
+            "financial_institution_branch": {
+                "id": bank.branch_code or ""
+            }
+        }
+
+    # Card payments
+    if payment_code in ("48", "55"):
+        payment_means["card_account"] = {
+            "primary_account_number_id": "XXXXXXXXXXXX" + (
+                sales_invoice_doc.card_last_4_digits or "0000"
+            ),
+            "network_id": sales_invoice_doc.card_network or "UNKNOWN",
+            "holder_name": (
+                sales_invoice_doc.card_holder_name
+                or sales_invoice_doc.supplier_name
+            )
+        }
+
+    return {
+        "payment_means": [payment_means]
+    }
+def get_invoice_transaction_metadata(doc):
+    """Extracts the invoice transaction type code and returns a dict of boolean flags for each transaction type."""
+    code = (doc.custom_invoice_transaction_type_code or "").strip()
+
+    if not code:
+        return {
+            "is_ftz": False,
+            "is_deemed": False,
+            "is_margin": False,
+            "is_summary": False,
+            "is_continuous": False,
+            "is_dab": False,
+            "is_ecommerce": False,
+            "is_export": False,
+        }
+
+    bit_code = code.split(":")[0].strip()
+
+    # Ensure length = 8
+    bit_code = bit_code.ljust(8, "X")
+
+    return {
+        "is_ftz": bit_code[0] == "1",
+        "is_deemed": bit_code[1] == "1",
+        "is_margin": bit_code[2] == "1",
+        "is_summary": bit_code[3] == "1",
+        "is_continuous": bit_code[4] == "1",
+        "is_dab": bit_code[5] == "1",
+        "is_ecommerce": bit_code[6] == "1",
+        "is_export": bit_code[7] == "1",
+    }
+
+# def get_payment_means(sales_invoice_doc):
+#     """Build UAE E-invoicing payment_means array from Sales Invoice payments."""
+
+#     payment_means_list = []
+
+#     for pay_row in sales_invoice_doc.payments:
+#         # 1. Get Mode of Payment document
+#         mop = frappe.get_doc("Mode of Payment", pay_row.mode_of_payment)
+
+#         # 2. Get custom payment means code (stored in MoP)
+#         pm_code = mop.get("custom_payment_means_codes") or ""
+
+#         # 3. Get first account under Mode of Payment → Accounts child table
+#         if not mop.accounts:
+#             continue
+
+#         mop_acc = mop.accounts[0]
+
+#         # 4. Fetch Account document
+#         acc = frappe.get_doc("Account", mop_acc.default_account)
+
+#         # -------------------------
+#         # UAE JSON construction
+#         # -------------------------
+#         payment_means_entry = {
+#             "payment_means_code": pm_code,
+#             "payment_means_code_name": mop.mode_of_payment,
+#             "payee_financial_account": {
+#                 "id": acc.account_number,
+#                 "id_scheme_id": "IBAN" if acc.account_type == "Bank" else "OTH",
+#                 "name": acc.account_name,
+#                 "financial_institution_branch": {
+#                     "id": acc.company or ""
+#                 }
+#             }
+#         }
+
+#         # If card payments → include card details (optional)
+#         if pm_code in ["48", "55", "57"]:  # Debit/Credit card
+#             payment_means_entry["card_account"] = {
+#                 "primary_account_number_id": "XXXXXXXXXXXX1234",
+#                 "network_id": "VISA",
+#                 "holder_name": sales_invoice_doc.customer
+#             }
+
+#         payment_means_list.append(payment_means_entry)
+
+#     return payment_means_list
+def get_payment_means(purchase_invoice_doc):
+    """Build UAE E-invoicing payment_means for Purchase Invoice (simple & correct)."""
+
+    payment_means_list = []
+
+    # 1️⃣ Get payment means code from Purchase Invoice
+    pm_code = purchase_invoice_doc.get("custom_payment_means_codes") or "30"
+
+    # 2️⃣ Build basic structure (PEPPOL compliant)
+    payment_means_entry = {
+        "payment_means_code": pm_code,
+        "payment_means_code_name": "Credit" if pm_code == "30" else "Other"
+    }
+
+    # 3️⃣ Optional: card details (only if needed)
+    if pm_code in ["48", "55", "57"]:
+        payment_means_entry["card_account"] = {
+            "primary_account_number_id": "XXXXXXXXXXXX1234",
+            "network_id": "VISA",
+            "holder_name": purchase_invoice_doc.supplier or ""
+        }
+
+    payment_means_list.append(payment_means_entry)
+
+    return payment_means_list
+
+def add_credit_note_details(invoice_doc, invoice_json):
+    """Adds credit note reason code and reason to the invoice JSON if the document is a credit note."""
+    if not invoice_doc.is_return:
+        return invoice_json
+
+    raw_value = invoice_doc.custom_credit_note_reason_code 
+
+    # Split code and reason from "DL8.61.1.A-Cancellation" format
+    if "-" in raw_value:
+        parts = raw_value.split("-", 1)  # split only on FIRST "-"
+        code = parts[0].strip()          # "DL8.61.1.A"
+        reason = parts[1].strip()        # "Cancellation"
+    else:
+        code = raw_value.strip()
+        reason = raw_value.strip()
+
+    invoice_json.update({
+        "credit_note_reason_code": code,    # "DL8.61.1.A"
+        "credit_note_reason": reason        # "Cancellation"
+    })
+    
+    return invoice_json
+
+def build_uae_invoice_json(invoice_number):
+    """Builds the UAE / PEPPOL compliant JSON invoice payload from the Purchase Invoice document."""
+    sales_invoice_doc = frappe.get_doc("Purchase Invoice", invoice_number)
+    company_doc = frappe.get_doc("Company", sales_invoice_doc.company)
+    if company_doc.custom_uae_einvoice_enabled !=1 :
+        frappe.throw(_("UAE E-invoicing not Enabled....pls enable to submit PEPPOL"))
+        pass
+    if sales_invoice_doc.custom_submit_to_fta!=1 :
+        frappe.throw(_("Submit to FTA not Enabled....pls enable to submit PEPPOL"))
+        pass
+    customer_doc = frappe.get_doc("Supplier", sales_invoice_doc.supplier)
+    address_data = None
+
+    if sales_invoice_doc.supplier_address:
+        address_data = frappe.get_doc("Address", sales_invoice_doc.supplier_address)
+    elif customer_doc.supplier_primary_address:
+        address_data = frappe.get_doc(
+                "Address", customer_doc.supplier_primary_address
+            )
+
+    if not address_data:
+        frappe.throw(_("Supplier address not found"))
+    
+    # ---------------- COUNTRY CODE ----------------
+    country_dict = country_code_mapping()
+
+    if address_data.country and address_data.country.lower() in country_dict:
+        country_code1 = country_dict[address_data.country.lower()]
+    else:
+        country_code1 = "AE" 
+    line_extension_amount = get_line_extension_amount(sales_invoice_doc)  
+    tax_exclusive_amount = get_tax_exc(sales_invoice_doc)
+    tax_inclusive_amount = get_tax_inclusive(sales_invoice_doc)
+    payable_amount = get_payable_amount(sales_invoice_doc)
+ 
+    payable_amount_float = float(payable_amount)
+    tax_inclusive_amount_float = float(tax_inclusive_amount)
+
+    payable_rounding_amount = (payable_amount_float - tax_inclusive_amount_float)
+
+    transaction_code = get_transaction_type_code(sales_invoice_doc)
+    is_ftz = transaction_code and transaction_code.startswith("1")
+    validate_receiving_party_fields(sales_invoice_doc,customer_doc,address_data,transaction_code)
+    receiving_party = {
+                "trade_name":  customer_doc.supplier_name,
+                "peppol_id":  customer_doc.custom_peppol_id,
+                "street_address": address_data.address_line1,
+                "city_address": address_data.city,
+                "additional_street_address": address_data.address_line2,
+                "postal_zone": address_data.pincode,
+                # "emirates_code": address_data.emirate,
+                "emirates_code" : get_uae_emirate_code(address_data.emirate),
+                "additional_address_lines":  address_data.address_line2,
+                "country_code": country_code1 ,
+                "vat_number": customer_doc.tax_id ,
+                "legal_name":  customer_doc.supplier_name,
+                # "identifiers":  [
+                #         {
+                #             "type": "TL",
+                #             "value": "112345679000001"
+                #         }
+                #         ],
+                "contact_name" :  customer_doc.supplier_name,
+                "contact_telephone": address_data.phone ,
+                "contact_email": address_data.email_id,
+    }
+    if customer_doc.get("custom_legal_registration_identifier_type") == "Commercial/Trade license":
+        if not customer_doc.custom_trade_license_number:
+            frappe.throw(_(
+                "custom_trade_license_number is mandatory when legal registartion is  "
+                "Commercial/Trade license"
+                
+            ))
+        receiving_party["identifiers"] = [{
+            "type": "TL",
+            "value": customer_doc.custom_trade_license_number,
+        }]
+    if is_ftz:
+        if not customer_doc.custom_fz_beneficiary_id:
+            frappe.throw(_(
+                "FZ Beneficiary ID (BTAE-01) is mandatory for "
+                "Free Trade Zone transactions (1XXXXXX)"
+            ))
+
+        receiving_party["fz_beneficiary_id"] = (
+            customer_doc.custom_fz_beneficiary_id
+        )
+
+    
+    issue_date = sales_invoice_doc.posting_date
+    document_references = []
+
+    if sales_invoice_doc.is_return and sales_invoice_doc.return_against:
+        original_invoice = frappe.get_doc(
+            "Sales Invoice",
+            sales_invoice_doc.return_against
+        )
+
+        document_references.append({
+            "id": original_invoice.name,
+            "issue_date": str(original_invoice.posting_date)
+        })
+    invoice = {
+        "document_identifier": sales_invoice_doc.name,
+        "issue_date": str(sales_invoice_doc.posting_date),
+        "issue_time":get_issue_time(sales_invoice_doc),
+        "due_date": get_due_date(sales_invoice_doc, issue_date),
+        "document_type": get_invoice_type_code(sales_invoice_doc),
+        "note":get_invoice_notes(sales_invoice_doc),
+
+        "tax_point_date":get_tax_point_date(sales_invoice_doc), #this feild is optional and having confus
+        
+        "document_currency":get_document_currency(sales_invoice_doc),
+        # "currency_exchange_rate" :get_currency_exchange_rate(sales_invoice_doc),
+        # "accounting_cost":  sales_invoice_doc.cost_center,
+        "buyer_reference": get_icv_code(invoice_number),
+        "invoice_period": get_invoice_period(sales_invoice_doc),#wrote a function but incode transaction code list need to check
+        # "order_reference": {   #OPTIONAL
+        #     "id": "PO-001/23",
+        #     "sales_order_id": "SO-001/23"
+        # },
+
+        "document_references": document_references,
+        # "other_references": {
+        #     "despatch_document_reference": "DESP-2025-001",
+        #     "receipt_document_reference": "REC-2025-001",
+        #     "originator_document_reference": "ORIG-2025-001",
+        #     "contract_document_reference": {
+        #     "id": "CONTRACT-2025-001",
+        #     "document_description": "AED 1000000"
+        #     },
+        #     "customs_document_reference": "CUSTOMS-2025-001",
+        #     "project_reference": "PROJECT-2025-001"
+        # }, OPTIONAL ORDER REFERENCES
+        "receiving_party":receiving_party,
+
+        "invoice_lines": [],
+        "legal_monetary_total": {
+                "line_extension_amount": line_extension_amount,
+                "tax_exclusive_amount": tax_exclusive_amount,
+                "tax_inclusive_amount": tax_inclusive_amount,
+                "allowance_total_amount":  str(abs(sales_invoice_doc.get("discount_amount", 0.0))),
+                "charge_total_amount": str(abs(sales_invoice_doc.get("change_amount") or 0.0)),
+                "prepaid_amount": 0,
+                "payable_rounding_amount": payable_rounding_amount,
+                "payable_amount": payable_amount,
+                "currency_id": sales_invoice_doc.currency
+            },
+        "payment_means": [
+                get_payment_means(sales_invoice_doc)
+            ],
+        "invoice_totals": {},
+        "metadata":get_invoice_transaction_metadata(sales_invoice_doc)
+    }
+    invoice = add_credit_note_details(sales_invoice_doc, invoice)
+    exchange_rate = get_currency_exchange_rate(sales_invoice_doc)
+    if exchange_rate is not None:
+        invoice["currency_exchange_rate"] = exchange_rate
+
+    # Optional accounting_cost at invoice level
+    if sales_invoice_doc.get("cost_center"):
+        invoice["accounting_cost"] = sales_invoice_doc.cost_center
+
+    # Optional invoice_period
+    invoice_period = get_invoice_period(sales_invoice_doc)
+    if invoice_period:
+        invoice["invoice_period"] = invoice_period
+
+    # # Optional order_reference
+    # if getattr(sales_invoice_doc, "custom_order_reference", None):
+    #     invoice["order_reference"] = {
+    #         "id": sales_invoice_doc.custom_order_reference,
+    #         "sales_order_id": getattr(sales_invoice_doc, "sales_order", None)
+    #     }
+    total_net = Decimal("0")
+    total_tax = Decimal("0")
+
+    vat_rate = Decimal(sales_invoice_doc.taxes[0].rate if sales_invoice_doc.taxes else 0)
+
+    invoice_lines_data, total_net, total_tax = get_item_data(sales_invoice_doc, vat_rate)
+
+    # Assign invoice lines to main invoice
+    invoice["invoice_lines"] = invoice_lines_data["invoice_lines"]
+
+
+    invoice["invoice_totals"] = {
+        "line_extension_amount": r2(total_net),
+        "tax_exclusive_amount": r2(total_net - Decimal(sales_invoice_doc.discount_amount or 0)),
+        "tax_inclusive_amount": r2(total_net + total_tax),
+        "allowance_total_amount": r2(abs(Decimal(sales_invoice_doc.discount_amount or 0))),
+        "payable_amount": r2(total_net + total_tax),
+        "currency_id": sales_invoice_doc.currency
+    }
+
+    return invoice
+    
+def save_and_attach_invoice_json(invoice_number):
+    """
+    Builds UAE invoice JSON, deletes ALL earlier XML/JSON attachments,
+    and attaches ONLY the latest file.
+    """
+
+    invoice_json = build_uae_invoice_json(invoice_number)
+    json_content = json.dumps(invoice_json, indent=4, ensure_ascii=False)
+    old_files = frappe.get_all(
+        "File",
+        filters={
+            "attached_to_doctype": "Purchase Invoice",
+            "attached_to_name": invoice_number,
+        },
+        fields=["name", "file_name"],
+    )
+
+    # 🔥 Delete XML & JSON files only
+    for f in old_files:
+        if f.file_name.lower().endswith((".xml", ".json")):
+            frappe.delete_doc("File", f.name, force=1)
+    file_doc = frappe.get_doc({
+        "doctype": "File",
+        "file_name": f"{invoice_number}_uae_invoice.json",
+        "is_private": 1,
+        "content": json_content,
+        "attached_to_doctype": "Purchase Invoice",
+        "attached_to_name": invoice_number,
+    })
+    file_doc.insert(ignore_permissions=True)
+    # frappe.throw(_("Invoice JSON attached as file: {0}").format(file_doc.file_name))
+    frappe.db.commit() # nosemgrep: frappe-manual-commit
+
+    return {
+        "file_name": file_doc.file_name,
+        "file_url": file_doc.file_url,
+        "json": invoice_json,
+    }
+
+
+@frappe.whitelist()
+def send_invoice_json(invoice_number: str):
+    if not invoice_number:
+        frappe.throw(_("Purchase Invoice not provided"))
+
+    result = save_and_attach_invoice_json(invoice_number)
+
+    return {
+        "message": _("Invoice JSON generated and attached successfully"),
+        "file_url": result["file_url"]
+    }
+    
+def get_uae_emirate_code(emirate_name):
+    """
+    Convert full UAE emirate name to PEPPOL subdivision code.
+    Required values:
+    AUH, DXB, SHJ, AJM, UAQ, RAK, FUJ
+    """
+    if not emirate_name:
+        return None
+
+    mapping = {
+        "abu dhabi": "AUH",
+        "dubai": "DXB",
+        "sharjah": "SHJ",
+        "ajman": "AJM",
+        "umm al quwain": "UAQ",
+        "ras al khaimah": "RAK",
+        "fujairah": "FUJ",
+    }
+
+    return mapping.get(emirate_name.strip().lower())
+def get_item_line_extension_amount(item):
+    """
+    Calculate line extension amount per invoice line.
+    = qty × rate (excluding VAT)
+    """
+    amount = (item.qty * item.rate)
+    return str(round(amount, 2))    
+def get_vat_category_code(vat_category_label):
+    """
+    Convert VAT category label to PEPPOL VAT category code.
+    Allowed codes:
+    S, Z, E, AE, O, N
+    """
+
+    if not vat_category_label:
+        return None
+
+    mapping = {
+        "s - standard rated": "S",
+        "standard rated": "S",
+        "s": "S",
+
+        "z - zero rated": "Z",
+        "zero rated": "Z",
+        "z": "Z",
+
+        "e - exempt from tax": "E",
+        "exempt from tax": "E",
+        "e": "E",
+
+        "ae - vat reverse charge": "AE",
+        "vat reverse charge": "AE",
+        "reverse charge": "AE",
+        "ae": "AE",
+
+        "o - not subject to vat": "O",
+        "not subject to vat": "O",
+        "o": "O",
+
+        "n - margin scheme": "N",
+        "margin scheme": "N",
+        "n": "N",
+    }
+
+    code = mapping.get(vat_category_label.strip().lower())
+
+    if not code:
+        frappe.throw(_(
+            f"Invalid VAT Category: {vat_category_label}. "
+            "Must be one of S, Z, E, AE, O, N."
+        ))
+
+    return code    

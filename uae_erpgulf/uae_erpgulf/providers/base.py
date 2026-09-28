@@ -1,54 +1,15 @@
-"""Shared base class for provider adapters.
-
-Every real ASP (Flick, Marmin, ...) gets its own adapter module under
-providers/<name>/adapter.py, subclassing BaseAdapter. The shared app files
-(test.py, send_purchase.py, webhook.py, ...) only ever call
-adapter.<method>(...) - they never check a provider name themselves. All
-the provider-specific detail (URL paths, header names, payload/response
-shapes) lives inside that provider's own adapter file, nowhere else.
-
-A method a given ASP doesn't support yet (usually because we don't have a
-verified docs page for it) should raise a clear frappe.throw explaining
-what's missing, not guess at a shape that hasn't been confirmed.
-"""
+"""Shared base class for provider adapters."""
 
 from datetime import timedelta
 
 import frappe
 
-# Fallback token TTL when an ASP's token response doesn't tell us how long
-# the token actually lives (Flick's and Marmin's _fetch_token() both try to
-# read a real expires_in from the response first - this is only used when
-# that's absent, so an old guess doesn't silently stay wrong forever once a
-# real value is available).
+
 DEFAULT_TOKEN_TTL_SEC = 55 * 60
 
 
 class BaseAdapter:
-    # Whether this ASP's submit_invoice() actually needs the shared
-    # PEPPOL/UBL-style "<invoice>_uae_invoice.json" file (built once, the
-    # same way, for every provider by save_and_attach_invoice_json in
-    # json_einvoice.py) as its json_data argument. True by default so
-    # nothing changes for an adapter that doesn't override it - Flick
-    # relies on this file (it's Flick's actual request body). An adapter
-    # that builds its own payload straight from the Sales Invoice doc
-    # instead (Marmin does) should set this to False, so test.py skips
-    # generating/attaching a file that would just be ignored.
-    USES_SHARED_INVOICE_JSON = True
-
-    # Whether, right after a successful submit_invoice() (status 200/201),
-    # the shared flow (generate_and_send_einvoice in test.py) should
-    # automatically call get_document_xml()/get_document_pdf() and attach
-    # whatever comes back. True by default - Flick's XML/PDF are generated
-    # synchronously by the time submit_invoice() returns, so fetching them
-    # immediately always works. An ASP whose document generation is async
-    # (Marmin: XML is generated some time after acceptance, and it has no
-    # PDF endpoint at all yet) should set this False, so a "not generated
-    # yet" response from the ASP's own server isn't logged as an Error Log
-    # entry on every single successful submission - that ASP's adapter
-    # methods are still there and correct, just meant to be called later
-    # (e.g. from a "Get Document Status"/"Get XML" button) instead of
-    # automatically right after submit.
+   
     AUTO_FETCH_DOCUMENTS_ON_SUBMIT = True
 
     def __init__(self, settings):
@@ -72,13 +33,7 @@ class BaseAdapter:
         return frappe.cache().get_value(self._cache_key())
 
     def set_cached_token(self, token, expires_in_sec=DEFAULT_TOKEN_TTL_SEC):
-        """Access tokens only ever live here (Redis, via frappe.cache()) -
-        never written to a DocType field. Also stashes the moment this
-        token expires under its own Redis key, at the same TTL, purely so
-        get_token_expiry() can show "Token Expires At" on Provider Settings
-        for visibility - Redis's own TTL on the token itself is still what
-        actually drives refreshing (get_valid_token() below), regardless of
-        whether anything ever reads this second key."""
+        """Access tokens only ever live here (Redis, via frappe.cache())"""
         frappe.cache().set_value(self._cache_key(), token, expires_in_sec=expires_in_sec)
         expiry = frappe.utils.now_datetime() + timedelta(seconds=expires_in_sec)
         frappe.cache().set_value(
@@ -87,32 +42,12 @@ class BaseAdapter:
 
     def get_token_expiry(self):
         """Best-effort expiry of whatever token is currently cached, for
-        display only. Returns None if nothing is cached right now (never
-        fetched yet, or already expired) - callers should treat that as
-        "unknown", not an error."""
+        display only. """
         raw = frappe.cache().get_value(self._token_expiry_cache_key())
         return frappe.utils.get_datetime(raw) if raw else None
 
     def save_outgoing_payload(self, doc, payload):
-        """Attach the exact JSON body this adapter is about to send to its
-        ASP as a File on the invoice - named "<invoice>_<provider>_payload.json"
-        (e.g. "ACC-SINV-2026-00203_marmin_payload.json"), so whichever
-        provider is active, you can always see exactly what was sent from
-        the invoice's own Attachments, the same way the Flick-shaped
-        "<invoice>_uae_invoice.json" file already works
-        (save_and_attach_invoice_json in json_einvoice.py) - just one file
-        per provider instead of one shared file every provider re-guesses
-        from.
-
-        Only replaces THIS provider's own previous payload file (matched by
-        exact file name), so it never touches the Flick-shaped file or
-        another provider's payload file if you switch providers on the same
-        invoice later.
-
-        Call this right before the actual request, in submit_invoice(), so
-        a file is always saved even if the request itself then fails - that
-        way a 400 response is just as debuggable as a success.
-        """
+        """Attach the exact JSON body this adapter is about to send """
         provider_slug = self.__class__.__name__.replace("Adapter", "").lower() or "provider"
         file_name = f"{doc.name}_{provider_slug}_payload.json"
 
@@ -169,19 +104,45 @@ class BaseAdapter:
     def update_participant(self, company_doc):
         raise NotImplementedError
 
-    def submit_invoice(self, doctype, doc, json_data):
-        """Send one invoice. Must return (status_code, response_data)."""
+    def submit_invoice(self, doctype, doc, json_data=None):
+        """Build this ASP's own payload for doc and send it"""
         raise NotImplementedError
 
+    def parse_submit_response(self, status_code, response_data):
+        """Pull the fields the shared submit flow stores on the invoice out
+        of submit_invoice()'s response. Returns a dict with document_id,
+        reporting_status, exchange_status and success (bool)."""
+        body = response_data if isinstance(response_data, dict) else {}
+        data = body.get("data") if isinstance(body.get("data"), dict) else {}
+
+        document_id = data.get("id") or body.get("id")
+        reporting_status = data.get("reporting_status") or body.get("reporting_status")
+        exchange_status = data.get("exchange_status") or body.get("exchange_status")
+
+        success = False
+        if status_code in (200, 201):
+            if isinstance(response_data, dict):
+                success = body.get("status") in ("success", "processed", "accepted") or bool(document_id)
+            else:
+                success = True
+
+        return {
+            "document_id": document_id,
+            "reporting_status": reporting_status,
+            "exchange_status": exchange_status,
+            "success": success,
+        }
+
+    def get_status_from_document_status(self, body):
+        """reporting_status out of a get_document_status() "response" body,
+        for the shared "Get Document Status" buttons. Override if needed."""
+        if not isinstance(body, dict):
+            return None
+        data = body.get("data") if isinstance(body.get("data"), dict) else {}
+        return data.get("reporting_status") or body.get("reporting_status")
+
     def get_document_status(self, doctype, doc):
-        """Should return {"http_status": <int>, "response": <body>} in
-        every case - success or the ASP call failing - rather than
-        frappe.throw()-ing on a bad HTTP status. Both FlickAdapter and
-        MarminAdapter follow this now: it's what lets the "Get Document
-        Status" callers (verify_token.py, send_purchase.py) and their
-        buttons show the real status code and only colour a genuine
-        non-2xx red, instead of a failure escaping as Frappe's own generic
-        error dialog with no status code or real detail."""
+        """Should return {"http_status": <int>, "response": <body>}."""
         raise NotImplementedError
 
     def get_document_xml(self, doctype, doc):
@@ -200,14 +161,5 @@ class BaseAdapter:
         raise NotImplementedError
 
     def get_webhook_listener_url(self):
-        """The URL this ASP's own server should call to deliver webhook
-        events, if it has one - e_invoice_provider_settings.py's
-        set_webhook_url() calls this to fill in the Webhook URL field, and
-        register_webhook() (where implemented) should call it too, rather
-        than each duplicating the same URL string.
-
-        None by default - an ASP with no webhook API at all (Marmin today)
-        just leaves this row's Webhook URL blank instead of showing a URL
-        for a listener that doesn't exist. Only override this where there's
-        a real listener function to point at, the way FlickAdapter does."""
+        """The URL this ASP's own server should call to deliver webhook"""
         return None

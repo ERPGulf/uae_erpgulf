@@ -6,6 +6,7 @@ import requests
 from frappe import _
 from frappe.utils import now_datetime
 from uae_erpgulf.uae_erpgulf.providers.base import BaseAdapter
+from uae_erpgulf.uae_erpgulf.providers.flick import purchase_json, sales_json
 
 
 class FlickAdapter(BaseAdapter):
@@ -160,11 +161,17 @@ class FlickAdapter(BaseAdapter):
             }
 
     # ---- invoices ----
-    def submit_invoice(self, doctype, doc, json_data):
+    def submit_invoice(self, doctype, doc, json_data=None):
+        """Builds Flick's PEPPOL-style JSON (and attaches it to the invoice as
+        <invoice>_uae_invoice.json) right here, then sends it. json_data is
+        ignored - kept only so the signature matches BaseAdapter."""
         settings = self.settings
         participant_id = settings.participant_id
         if not participant_id:
             frappe.throw(_("Participant ID is missing on E-Invoice Provider Settings"))
+
+        builder = purchase_json if doctype == "Purchase Invoice" else sales_json
+        json_data = builder.save_and_attach_invoice_json(doc.name)["json"]
 
         base_url = self.get_base_url()
         headers = self.get_auth_headers({"Content-Type": "application/json"})
