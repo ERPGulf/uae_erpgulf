@@ -259,7 +259,8 @@ doctype_js = {
                         "public/js/tooltip_pos.js",
                         "public/js/badges_purchase.js"
                 ],
-    "E-Invoice Provider Settings": "public/js/e_invoice_provider_settings.js"
+    "E-Invoice Provider Settings": "public/js/e_invoice_provider_settings.js",
+    "Supplier": "public/js/marmin_party.js"
     
 }
 doctype_list_js = {

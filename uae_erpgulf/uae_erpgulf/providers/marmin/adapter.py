@@ -720,6 +720,11 @@ class MarminAdapter(BaseAdapter):
             
             pass
 
+        # The supplier's own Marmin Business Profile ID - only if this
+        # supplier is also on Marmin (Supplier > Marmin Profile ID).
+        if supplier_doc.get("custom_marmin_profile_id"):
+            party["profile_id"] = supplier_doc.custom_marmin_profile_id
+
         return party
 
     def _build_purchase_payment_means(self, doc):
@@ -885,8 +890,10 @@ class MarminAdapter(BaseAdapter):
 
         if not as_customer:
             party["telephone"] = address_data.phone
-           
-            party["profile_id"] = self.settings.participant_id
+
+        # Our own Marmin Business Profile ID - on the supplier block for Sales
+        # Invoices and on the customer block for Purchase Invoices.
+        party["profile_id"] = self.settings.participant_id
 
         
         if company_doc.tax_id:
@@ -1021,6 +1028,21 @@ class MarminAdapter(BaseAdapter):
         if not uom:
             return "EA"
         return MARMIN_UOM_TO_UNECE_CODE.get(uom.strip().lower(), "EA")
+
+
+MARMIN_PROVIDER_NAME = "Marmin AI Software Design LLC"
+
+
+@frappe.whitelist()
+def is_marmin_active():
+    """True if any Company uses Marmin as its Accredited Service Provider.
+    Used by public/js/marmin_party.js to show the Marmin Profile ID field
+    on Supplier only when Marmin is actually in use."""
+    return bool(
+        frappe.db.exists(
+            "Company", {"custom_accredited_service_providers": MARMIN_PROVIDER_NAME}
+        )
+    )
 
 
 MARMIN_WEBHOOK_SIGNATURE_HEADER = "x-marmin-signature"
