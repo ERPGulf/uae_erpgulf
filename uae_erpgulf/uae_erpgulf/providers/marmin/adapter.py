@@ -147,6 +147,13 @@ MARMIN_APPROVED_PAYMENT_MEANS_CODES = {"1", "10", "20", "21", "30", "49", "54", 
 
 
 MARMIN_ENDPOINT_SCHEME_ID_UAE = "0235"
+
+# Purchase debit note (return Purchase Invoice) = Marmin "self-billed credit
+# note". Type code 261 is from Marmin's docs example. The URL path below
+# follows the same pattern as sales-credit-notes / purchase-invoices - confirm
+# it against Marmin's docs and change only this line if theirs differs.
+MARMIN_PURCHASE_CREDIT_NOTE_TYPE_CODE = "261"
+MARMIN_PURCHASE_CREDIT_NOTE_PATH = "purchase-credit-notes"
 MARMIN_UOM_TO_UNECE_CODE = {
     "nos": "EA", "unit": "EA", "each": "EA", "pcs": "EA", "piece": "EA",
     "kg": "KGM", "kilogram": "KGM",
@@ -270,7 +277,7 @@ class MarminAdapter(BaseAdapter):
     def _document_resource_path(self, doc):
         """"sales-invoices", "sales-credit-notes", or purchas invoice"""
         if doc.doctype == "Purchase Invoice":
-            return "purchase-invoices"
+            return MARMIN_PURCHASE_CREDIT_NOTE_PATH if doc.is_return else "purchase-invoices"
         return "sales-credit-notes" if doc.is_return else "sales-invoices"
 
     def get_document_status(self, doctype, doc):
@@ -408,12 +415,7 @@ class MarminAdapter(BaseAdapter):
         """POST /api/sales-invoices/{business_profile_id}"""
         if doctype == "Purchase Invoice":
             if doc.is_return:
-                frappe.throw(
-                    _(
-                        "Marmin purchase debit note submission isn't implemented yet - "
-                        "no confirmed docs page/example for it."
-                    )
-                )
+                return self._submit_purchase_credit_note(doc)
             return self._submit_purchase_invoice(doc)
         if doctype != "Sales Invoice":
             frappe.throw(
@@ -614,6 +616,96 @@ class MarminAdapter(BaseAdapter):
             "accounting_supplier_party": self._build_purchase_supplier_party(doc),
            
             "accounting_customer_party": self._build_accounting_supplier_party(doc, as_customer=True),
+            "payment_means": self._build_purchase_payment_means(doc),
+            "document_lines": [
+                self._build_invoice_line(
+                    item, default_vat_category, default_vat_rate, default_exemption_label
+                )
+                for item in doc.items
+            ],
+        }
+        if company_doc.tax_id:
+            payload["buyer_customer_party"] = {"id": company_doc.tax_id}
+        if supplier_doc.tax_id:
+            payload["seller_supplier_party"] = {"id": supplier_doc.tax_id}
+
+        return payload
+
+    def _submit_purchase_credit_note(self, doc):
+        """POST /api/purchase-credit-notes/{business_profile_id} - a return
+        Purchase Invoice (debit note), sent as Marmin's self-billed credit note."""
+        settings = self.settings
+        business_profile_id = settings.participant_id
+        if not business_profile_id:
+            frappe.throw(
+                _(
+                    "Business Profile ID (stored in Participant ID) is missing on "
+                    "E-Invoice Provider Settings"
+                )
+            )
+
+        base_url = self.get_base_url()
+        url = f"{base_url}/api/{MARMIN_PURCHASE_CREDIT_NOTE_PATH}/{business_profile_id}"
+        headers = self.get_auth_headers({"Content-Type": "application/json"})
+
+        payload = self._build_purchase_credit_note_payload(doc)
+
+        self.save_outgoing_payload(doc, payload)
+
+        response = requests.post(url, headers=headers, json=payload, timeout=120)
+
+        try:
+            response_data = response.json()
+        except Exception:
+            response_data = response.text
+
+        return response.status_code, response_data
+
+    def _build_purchase_credit_note_payload(self, doc):
+        """Maps a return Purchase Invoice to Marmin's self-billed credit note,
+        per Marmin's docs example: credit_note_type_code 261, the original
+        purchase invoice in billing_reference, the reason code in
+        discrepancy_response and its text in reason."""
+        if not doc.return_against:
+            frappe.throw(
+                _(
+                    "This debit note has no Return Against purchase invoice set - "
+                    "Marmin requires the original invoice in billing_reference."
+                )
+            )
+
+        raw_reason = (doc.get("custom_credit_note_reason_code") or "").strip()
+        if not raw_reason:
+            frappe.throw(
+                _("Please select a Credit Note Reason Code on this debit note before submitting.")
+            )
+        reason_code, _sep, reason_text = raw_reason.partition("-")
+
+        default_vat_category = doc.custom_vat_category
+        default_vat_rate = doc.taxes[0].rate if doc.taxes else 0
+        default_exemption_label = doc.custom_vat_exemption_reason_code
+
+        supplier_doc = frappe.get_doc("Supplier", doc.supplier)
+        company_doc = frappe.get_doc("Company", doc.company)
+        original_invoice = frappe.get_doc("Purchase Invoice", doc.return_against)
+
+        payload = {
+            "profile_execution_id": MARMIN_PROFILE_EXECUTION_ID_STANDARD,
+            "document_number": doc.name,
+            "issue_date": str(doc.posting_date),
+            "issue_time": _marmin_issue_time(doc),
+            "credit_note_type_code": MARMIN_PURCHASE_CREDIT_NOTE_TYPE_CODE,
+            "document_currency_code": doc.currency,
+            "accounting_supplier_party": self._build_purchase_supplier_party(doc),
+            "accounting_customer_party": self._build_accounting_supplier_party(doc, as_customer=True),
+            "billing_reference": [
+                {
+                    "id": original_invoice.name,
+                    "issue_date": str(original_invoice.posting_date),
+                }
+            ],
+            "discrepancy_response": reason_code.strip(),
+            "reason": (reason_text or reason_code).strip(),
             "payment_means": self._build_purchase_payment_means(doc),
             "document_lines": [
                 self._build_invoice_line(
@@ -1024,6 +1116,52 @@ class MarminAdapter(BaseAdapter):
             "classified_tax_category": classified_tax_category,
         }
 
+    # ---- incoming invoice import ----
+    def parse_incoming_invoice(self, invoice_json):
+        """Marmin's JSON: seller in accounting_supplier_party, lines in
+        document_lines (price.base_amount, classified_tax_category.percent)."""
+        party = invoice_json.get("accounting_supplier_party") or {}
+        tax_scheme = party.get("party_tax_scheme") or {}
+        seller = invoice_json.get("seller_supplier_party") or {}
+
+        unece_to_uom = {"EA": "Nos"}
+        for uom, code in MARMIN_UOM_TO_UNECE_CODE.items():
+            unece_to_uom.setdefault(code, uom.title())
+
+        lines = []
+        for line in invoice_json.get("document_lines") or []:
+            price = line.get("price") or {}
+            tax = line.get("classified_tax_category") or {}
+            qty = float(line.get("quantity") or 1)
+            base_quantity = float(price.get("base_quantity") or 1)
+            rate = float(price.get("base_amount") or 0) / base_quantity
+            lines.append({
+                "name": line.get("name"),
+                "description": line.get("description"),
+                "qty": qty,
+                "uom": unece_to_uom.get(line.get("unit_code") or "EA", "Nos"),
+                "rate": rate,
+                "amount": float(line.get("line_extension_amount") or qty * rate),
+                "vat_rate": float(tax.get("percent") if tax.get("percent") is not None else 5),
+            })
+
+        payment_means = invoice_json.get("payment_means") or []
+        payment_means_code = None
+        if payment_means and isinstance(payment_means[0], dict):
+            payment_means_code = payment_means[0].get("payment_means_code")
+
+        return {
+            "supplier_name": party.get("party_name") or party.get("name"),
+            "vat_number": tax_scheme.get("company_id") or seller.get("id"),
+            "posting_date": invoice_json.get("issue_date"),
+            "due_date": invoice_json.get("due_date"),
+            "currency": invoice_json.get("document_currency_code") or "AED",
+            "document_id": invoice_json.get("id") or invoice_json.get("document_number"),
+            "conversion_rate": None,
+            "payment_means_code": payment_means_code,
+            "lines": lines,
+        }
+
     def _unit_code(self, uom):
         if not uom:
             return "EA"
@@ -1116,11 +1254,14 @@ def marmin_webhook_listener():
     sales_invoice_row = frappe.db.get_value(
         "Sales Invoice", {"custom_document_id": resource_id}, ["name", "is_return"], as_dict=True
     )
-    purchase_invoice_name = frappe.db.get_value(
-        "Purchase Invoice", {"custom_document_id": resource_id}, "name"
+    purchase_invoice_row = frappe.db.get_value(
+        "Purchase Invoice", {"custom_document_id": resource_id}, ["name", "is_return"], as_dict=True
     )
+    purchase_invoice_name = purchase_invoice_row.name if purchase_invoice_row else None
 
-    if purchase_invoice_name:
+    if purchase_invoice_row and purchase_invoice_row.is_return:
+        resource_path = MARMIN_PURCHASE_CREDIT_NOTE_PATH
+    elif purchase_invoice_name:
         resource_path = "purchase-invoices"
     elif sales_invoice_row and sales_invoice_row.is_return:
         resource_path = "sales-credit-notes"

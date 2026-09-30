@@ -374,6 +374,44 @@ class FlickAdapter(BaseAdapter):
         except Exception:
             return {"raw_response": response.text}
 
+    # ---- incoming invoice import ----
+    def parse_incoming_invoice(self, invoice_json):
+        """Flick's PEPPOL-style JSON: seller in receiving_party, lines in
+        invoice_lines."""
+        party = invoice_json.get("receiving_party") or {}
+
+        lines = []
+        for line in invoice_json.get("invoice_lines") or []:
+            lines.append({
+                "name": line.get("name"),
+                "description": line.get("description"),
+                "qty": float(line.get("invoiced_quantity") or 1),
+                "uom": line.get("uom") or "Nos",
+                "rate": float(line.get("unit_price") or 0),
+                "amount": float(line.get("line_extension_amount") or 0),
+                "vat_rate": float(line.get("vat_percentage") or 5),
+            })
+
+        payment_means_code = None
+        payment_means = invoice_json.get("payment_means") or []
+        if payment_means and isinstance(payment_means[0], dict):
+            pm = payment_means[0]
+            payment_means_code = pm.get("payment_means_code") or (
+                pm.get("payment_means") or {}
+            ).get("payment_means_code")
+
+        return {
+            "supplier_name": party.get("trade_name") or party.get("legal_name"),
+            "vat_number": party.get("vat_number"),
+            "posting_date": invoice_json.get("issue_date"),
+            "due_date": invoice_json.get("due_date"),
+            "currency": invoice_json.get("document_currency") or "AED",
+            "document_id": invoice_json.get("document_identifier"),
+            "conversion_rate": invoice_json.get("currency_exchange_rate"),
+            "payment_means_code": payment_means_code,
+            "lines": lines,
+        }
+
 
 @frappe.whitelist(allow_guest=True)  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
 def flick_webhook_listener():

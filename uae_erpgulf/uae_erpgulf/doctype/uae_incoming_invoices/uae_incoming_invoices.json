@@ -1,10 +1,12 @@
 {
  "actions": [],
  "allow_rename": 1,
+ "autoname": "field:title",
  "creation": "2026-06-17 16:58:04.104533",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "title",
   "document_id",
   "incoming_invoice_file",
   "status",
@@ -32,15 +34,23 @@
    "fieldname": "submit_response",
    "fieldtype": "Small Text",
    "label": "Submit Response"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "read_only": 1,
+   "unique": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-18 10:47:51.939813",
+ "modified": "2026-09-30 08:59:54.394191",
  "modified_by": "Administrator",
  "module": "uae_erpgulf",
  "name": "UAE Incoming Invoices",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {

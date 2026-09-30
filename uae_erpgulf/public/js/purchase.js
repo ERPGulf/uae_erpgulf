@@ -218,12 +218,6 @@ function get_fta_incoming_invoices(frm) {
 function show_fta_invoices_dialog(frm, invoices) {
     console.log("Invoices received:", invoices);
 
-    const docname_map = {};
-    invoices.forEach(inv => {
-        docname_map[inv.document_id] = inv.name;
-    });
-    console.log("docname_map:", docname_map);
-
     // Build simple HTML table instead of Frappe grid
     let table_rows = '';
     invoices.forEach((inv, idx) => {
@@ -231,7 +225,7 @@ function show_fta_invoices_dialog(frm, invoices) {
             <tr>
                 <td style="text-align:center; padding:8px;">
                     <input type="checkbox" class="fta-row-check" data-idx="${idx}" 
-                           data-document_id="${inv.document_id}" 
+                           data-document_id="${inv.document_id || ''}" 
                            data-docname="${inv.name}"
                            style="width:16px; height:16px; cursor:pointer;">
                 </td>
@@ -248,19 +242,19 @@ function show_fta_invoices_dialog(frm, invoices) {
                 <thead style="background:#f5f5f5;">
                     <tr>
                         <th style="width:50px; text-align:center; padding:8px;">
-                            <input type="checkbox" id="fta_select_all" style="width:16px; height:16px; cursor:pointer;">
+                            <input type="checkbox" class="fta-select-all" style="width:16px; height:16px; cursor:pointer;">
                         </th>
                         <th style="padding:8px;">Document ID</th>
                         <th style="padding:8px;">Incoming Invoice File</th>
                     </tr>
                 </thead>
-                <tbody id="fta_invoice_tbody">
+                <tbody>
                     ${table_rows}
                 </tbody>
             </table>
         </div>
         <div style="text-align:right; padding: 5px 0 10px 0;">
-            <button class="btn btn-primary" id="fta_import_btn">Import Selected</button>
+            <button class="btn btn-primary fta-import-btn">Import Selected</button>
         </div>
     `;
 
@@ -275,63 +269,46 @@ function show_fta_invoices_dialog(frm, invoices) {
         ]
     });
 
+    // Remove this dialog from the page when closed, so old ones don't pile up
+    dialog.onhide = function () {
+        dialog.$wrapper.remove();
+    };
+
+    // Select All - only this dialog's checkboxes
+    dialog.$wrapper.on('change', '.fta-select-all', function () {
+        dialog.$wrapper.find('.fta-row-check').prop('checked', $(this).prop('checked'));
+    });
+
+    // Import button - only this dialog's button
+    dialog.$wrapper.on('click', '.fta-import-btn', function () {
+        console.log("=== IMPORT CLICKED ===");
+        const btn = $(this);
+
+        const selected_rows = [];
+        dialog.$wrapper.find('.fta-row-check:checked').each(function () {
+            selected_rows.push({
+                document_id: $(this).attr('data-document_id'),
+                docname: $(this).attr('data-docname')
+            });
+        });
+        console.log("Selected rows:", selected_rows);
+
+        if (selected_rows.length === 0) {
+            frappe.msgprint({
+                title: __('Nothing Selected'),
+                message: __('Please select at least one invoice.'),
+                indicator: 'red'
+            });
+            return;
+        }
+
+        btn.prop('disabled', true).text('Importing...');
+        process_invoices_sequentially(selected_rows, 0, [], dialog, frm);
+    });
+
     dialog.show();
-
-    setTimeout(() => {
-        // Select All checkbox
-        const select_all = document.getElementById('fta_select_all');
-        if (select_all) {
-            select_all.addEventListener('change', function () {
-                document.querySelectorAll('.fta-row-check').forEach(cb => {
-                    cb.checked = select_all.checked;
-                });
-            });
-        }
-
-        // Import button
-        const btn = document.getElementById('fta_import_btn');
-        console.log("Import button found:", btn);
-
-        if (btn) {
-            btn.addEventListener('click', function () {
-                console.log("=== IMPORT CLICKED ===");
-
-                // Read checked checkboxes directly from DOM
-                const checked_boxes = document.querySelectorAll('.fta-row-check:checked');
-                console.log("Checked boxes count:", checked_boxes.length);
-
-                if (checked_boxes.length === 0) {
-                    frappe.msgprint({
-                        title: __('Nothing Selected'),
-                        message: __('Please select at least one invoice.'),
-                        indicator: 'red'
-                    });
-                    return;
-                }
-
-                const selected_rows = [];
-                checked_boxes.forEach(cb => {
-                    const document_id = cb.getAttribute('data-document_id');
-                    const docname = cb.getAttribute('data-docname');
-                    console.log("Selected:", document_id, "->", docname);
-                    selected_rows.push({
-                        document_id: document_id,
-                        docname: docname
-                    });
-                });
-
-                console.log("Selected rows:", selected_rows);
-
-                btn.disabled = true;
-                btn.textContent = 'Importing...';
-
-                process_invoices_sequentially(selected_rows, 0, [], dialog, frm);
-            });
-        } else {
-            console.error("Import button NOT found in DOM");
-        }
-    }, 300);
 }
+
 function process_invoices_sequentially(rows, index, results, dialog, frm) {
     console.log(`Processing ${index + 1} of ${rows.length}`);
 

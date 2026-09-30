@@ -1,10 +1,7 @@
 """Shared base class for provider adapters."""
 
 from datetime import timedelta
-
 import frappe
-
-
 DEFAULT_TOKEN_TTL_SEC = 55 * 60
 
 
@@ -158,6 +155,22 @@ class BaseAdapter:
         raise NotImplementedError
 
     def get_webhook_deliveries(self):
+        raise NotImplementedError
+
+    def parse_incoming_invoice(self, invoice_json):
+        """Turn this ASP's incoming (received) invoice JSON into one common
+        shape, so the shared "Get FTA Incoming Invoice" import never has to
+        know any provider's field names. Must return:
+
+        {
+            "supplier_name": str, "vat_number": str,
+            "posting_date": str, "due_date": str, "currency": str,
+            "document_id": str, "conversion_rate": float or None,
+            "payment_means_code": str or None,
+            "lines": [{"name", "description", "qty", "uom", "rate",
+                       "amount", "vat_rate"}],
+        }
+        """
         raise NotImplementedError
 
     def get_webhook_listener_url(self):

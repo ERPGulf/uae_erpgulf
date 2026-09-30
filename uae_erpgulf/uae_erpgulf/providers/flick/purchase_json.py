@@ -688,7 +688,9 @@ def add_credit_note_details(invoice_doc, invoice_json):
     if not invoice_doc.is_return:
         return invoice_json
 
-    raw_value = invoice_doc.custom_credit_note_reason_code 
+    raw_value = (invoice_doc.custom_credit_note_reason_code or "").strip()
+    if not raw_value:
+        frappe.throw(_("Please select a Credit Note Reason Code on this debit note before submitting."))
 
     # Split code and reason from "DL8.61.1.A-Cancellation" format
     if "-" in raw_value:
@@ -800,7 +802,7 @@ def build_uae_invoice_json(invoice_number):
 
     if sales_invoice_doc.is_return and sales_invoice_doc.return_against:
         original_invoice = frappe.get_doc(
-            "Sales Invoice",
+            "Purchase Invoice",
             sales_invoice_doc.return_against
         )
 
@@ -1026,4 +1028,4 @@ def get_vat_category_code(vat_category_label):
             "Must be one of S, Z, E, AE, O, N."
         ))
 
-    return code    
+    return code
