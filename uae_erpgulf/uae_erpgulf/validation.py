@@ -1,25 +1,31 @@
-
+"""this file contains the functions to validations."""
 import frappe
 from frappe import _
 
 def validate_accredited_service_provider(doc, method=None):
+    """Runs before a Sales/Purchase Invoice is submitted. """
     company_doc = frappe.get_doc("Company", doc.company)
 
-    if (
-        company_doc.custom_base_url
-        and "flick.network" in company_doc.custom_base_url.lower()
-        and company_doc.custom_accredited_service_providers != "Flick Network L.L.C"
-    ):
+    if not company_doc.custom_uae_einvoice_enabled:
+        return
+
+    provider = company_doc.custom_accredited_service_providers
+    if not provider:
         frappe.throw(_(
-            "Selected Accredited Service Provider must be Flick Network L.L.C for flick api integration."
-        ))
+            "Select an Accredited Service Provider on {0} before submitting e-invoices."
+        ).format(doc.company))
 
+    has_settings = frappe.db.exists(
+        "E-Invoice Provider Settings",
+        {"company": doc.company, "provider": provider, "enabled": 1},
+    )
+    if not has_settings:
+        frappe.throw(_(
+            "No enabled E-Invoice Provider Settings found for {0} under {1}. "
+            "Set up its credentials before submitting e-invoices."
+        ).format(provider, doc.company))
 
-    
-    # Validation 1: If Invoice out of scope of tax is checked,
-    # VAT Category must be "O - Not subject to VAT"
-
-
+  
 def success_log(
     title=None,
     document_id=None,

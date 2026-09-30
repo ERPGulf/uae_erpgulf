@@ -255,11 +255,12 @@ doctype_js = {
                         "public/js/tooltip.js",
                         "public/js/badge_sales.js"
                 ],
-    "Company":"public/js/company.js",
     "Purchase Invoice":["public/js/purchase.js",
                         "public/js/tooltip_pos.js",
                         "public/js/badges_purchase.js"
-                ]
+                ],
+    "E-Invoice Provider Settings": "public/js/e_invoice_provider_settings.js",
+    "Supplier": "public/js/marmin_party.js"
     
 }
 doctype_list_js = {
@@ -290,6 +291,13 @@ scheduler_events = {
             "uae_erpgulf.uae_erpgulf.webhook.update_webhook_logs"
         ]
     }
+}
+
+
+uae_einvoice_providers = {
+    "Flick Network L.L.C": "uae_erpgulf.uae_erpgulf.providers.flick.adapter.FlickAdapter",
+    "Marmin AI Software Design LLC": "uae_erpgulf.uae_erpgulf.providers.marmin.adapter.MarminAdapter",
+    "Suntech Business Solutions DMCC": "uae_erpgulf.uae_erpgulf.providers.suntech.adapter.SuntechAdapter",
 }
 
 import uae_erpgulf.overrides.return_validation

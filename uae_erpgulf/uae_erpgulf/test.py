@@ -1,140 +1,48 @@
-
-
+""" this file contains the functions to send the sales invoice to the provider"""
 import frappe
 import json
 import requests
+import time
 from frappe import _
-from datetime import timedelta
-from datetime import datetime
-import pytz
-from uae_erpgulf.uae_erpgulf.json_einvoice import send_invoice_json
-from uae_erpgulf.uae_erpgulf.verify_token import get_valid_flick_token
+from uae_erpgulf.uae_erpgulf.provider_settings import get_active_provider_settings
+from uae_erpgulf.uae_erpgulf.providers import get_adapter
 from uae_erpgulf.uae_erpgulf.attach import get_document_xml
 from uae_erpgulf.uae_erpgulf.attach import get_document_pdf
 from uae_erpgulf.uae_erpgulf.validation import success_log
 
-def send_invoice_to_flick(doc, method=None):
-    """
-    On Sales Invoice Submit and after JSON generation then submission to Flick API
-    """
+def send_invoice_to_provider(doc, method=None):
+    """ On Sales Invoice Submit and after JSON generation """
 
     try:
-        files = frappe.get_all(
-            "File",
-            filters={
-                "attached_to_doctype": "Sales Invoice",
-                "attached_to_name": doc.name
-            },
-            fields=["file_url", "file_name"]
-        )
-        json_file = None
-        for f in files:
-            if f.file_name.lower().endswith(".json"):
-                json_file = f
-                break
+        settings = get_active_provider_settings(doc.company)
+        adapter = get_adapter(settings)
 
-        if not json_file:
-            frappe.throw(_("No JSON attachment found."))
-        file_doc = frappe.get_doc("File", {"file_url": json_file.file_url})
-        file_path = file_doc.get_full_path()
+        status_code, response_data = adapter.submit_invoice("Sales Invoice", doc)
 
-        with open(file_path, "r", encoding="utf-8") as f: # nosemgrep: frappe-security-file-traversal
-            json_data = json.load(f)
-        company_doc = frappe.get_doc("Company", doc.company)
-        participant_id = company_doc.custom_participant_id
-        payload = {
-            "document": json_data
-        }
-        base_url = company_doc.custom_base_url
-        url =  f"{base_url}/v1/{participant_id}/documents"
-        # frappe.throw(_(url))
-        auth_key = company_doc.custom_xflickauthkey
-        
-        access_token = get_valid_flick_token(company_doc.name)
-
-        if not participant_id:
-            frappe.throw(_("Participant ID is missing in Company"))
-
-        # Case 1: Use X-Flick Auth Key
-        if auth_key:
-            headers = {
-                "Content-Type": "application/json",
-                "X-Flick-Auth-Key": auth_key
-            }
-
-        # Case 2: Fallback to Access Token
-        elif access_token:
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {access_token}"
-            }
-
-        # Case 3: Neither available
+        if isinstance(response_data, (dict, list)):
+            pretty_response = json.dumps(response_data, indent=2)
         else:
-            frappe.throw(_("Both X-Flick Auth Key and Access Token are missing in Company"))
-       
-        response = requests.post(
-            url,
-            headers=headers,
-            json=payload,
-            timeout=120
-        )
-
-        try:
-            response_data = response.json()
-        except Exception:
-            response_data = response.text
-        data = response_data.get("data", {})
+            pretty_response = str(response_data)
 
         html = """
-            <table border="1" cellpadding="8" cellspacing="0" 
-                style="border-collapse:collapse;width:100%;font-size:13px;">
-                <thead>
-                    <tr style="background-color:#f0f4f7;">
-                        <th style="padding:8px 12px;text-align:left;border:1px solid #d1d8dd;">Field</th>
-                        <th style="padding:8px 12px;text-align:left;border:1px solid #d1d8dd;">Value</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;"><b>API Status</b></td>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;">{api_status}</td>
-                    </tr>
-                    <tr style="background-color:#f9f9f9;">
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;"><b>Message</b></td>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;">{message}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;"><b>Document ID</b></td>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;">{doc_id}</td>
-                    </tr>
-                    <tr style="background-color:#f9f9f9;">
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;"><b>Processing Status</b></td>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;">{proc_status}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;"><b>Reporting Status</b></td>
-                        <td style="padding:8px 12px;border:1px solid #d1d8dd;">{rep_status}</td>
-                    </tr>
-                </tbody>
-            </table>
+            <p><b>HTTP Status:</b> {status_code}</p>
+            <pre style="white-space:pre-wrap;background:#f6f8fa;padding:12px;
+                border-radius:6px;max-height:400px;overflow:auto;font-size:12px;">{response}</pre>
             """.format(
-                api_status=response_data.get('status', '-'),
-                message=response_data.get('message', '-'),
-                doc_id=data.get('id', '-'),
-                proc_status=data.get('status', '-'),
-                rep_status=data.get('reporting_status', '-')
+                status_code=status_code,
+                response=frappe.utils.escape_html(pretty_response),
             )
 
-        frappe.msgprint(html, title="Flick Response", wide=True)
 
+        frappe.msgprint(html, title="E-Invoice Response", wide=True)
 
-    
+        return status_code, response_data
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "E-Invoice Submit Error")
         
-        return response.status_code, response_data
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "Flick API Error")
-        frappe.throw(_("Error while sending invoice to Flick API."))
+        frappe.throw(
+            _("Error while sending invoice to the e-invoicing provider: {0}").format(str(e))
+        )
 
 
 
@@ -142,9 +50,7 @@ from typing import Optional, Union
 from frappe.model.document import Document
 @frappe.whitelist(allow_guest=False)
 def generate_and_send_einvoice(doc: Union[Document, str], method: Optional[str] = None):
-    """
-    Store Success/Failed in custom_uae_einvoice_status
-    """
+    """ Store Success/Failed in custom_uae_einvoice_status """
     if isinstance(doc, str):
         doc = frappe.parse_json(doc)
 
@@ -154,71 +60,75 @@ def generate_and_send_einvoice(doc: Union[Document, str], method: Optional[str] 
         return
 
     try:
-        json_response = send_invoice_json(doc.name)
+        settings = get_active_provider_settings(doc.company)
+        adapter = get_adapter(settings)
 
-        if not json_response:
-            frappe.throw(_("Failed to generate eInvoice JSON"))
-        status_code, response_data = send_invoice_to_flick(doc)
+        status_code, response_data = send_invoice_to_provider(doc)
         if isinstance(response_data, dict):
             response_text = json.dumps(response_data, indent=4)
         else:
             response_text = str(response_data)
-        
-        invoice_status = "Not Submitted"
-        reporting_status = None  # NEW
-        
-        # ✅ Extract reporting_status safely
-        if isinstance(response_data, dict):
-            data = response_data.get("data", {})
-            reporting_status = data.get("reporting_status")
-            document_id = data.get("id")
-        # frappe.throw(_("Status Code: {0}").format(status_code))
-        if status_code == 200:
-            if isinstance(response_data, dict):
-                if response_data.get("status") in ["success", "processed", "accepted"]:
-                    invoice_status = "Success"
-                    
-            else:
-                invoice_status = "Success"
-        # Save 
-        
+
+        parsed = adapter.parse_submit_response(status_code, response_data)
+        document_id = parsed.get("document_id")
+        reporting_status = parsed.get("reporting_status")
+        exchange_status = parsed.get("exchange_status")
+        invoice_status = "Success" if parsed.get("success") else "Not Submitted"
+
         doc.db_set("custom_submit_response", response_text)
-        if status_code == 200:
-            get_document_xml("Sales Invoice",doc.name)
-            get_document_pdf("Sales Invoice",doc.name)
+        if status_code in (200, 201) and getattr(
+            adapter, "AUTO_FETCH_DOCUMENTS_ON_SUBMIT", True
+        ):
+            retry_attempts = max(
+                1, getattr(adapter, "DOCUMENT_FETCH_RETRY_ATTEMPTS", 1)
+            )
+            retry_delay_seconds = getattr(
+                adapter, "DOCUMENT_FETCH_RETRY_DELAY_SECONDS", 0
+            )
+            for fetch_fn, file_label in (
+                (get_document_xml, "XML"),
+                (get_document_pdf, "PDF"),
+            ):
+                for attempt in range(1, retry_attempts + 1):
+                    
+                    message_log_length_before = len(frappe.local.message_log)
+                    try:
+                        fetch_fn("Sales Invoice", doc.name)
+                        break
+                    except Exception:
+                        del frappe.local.message_log[message_log_length_before:]
+                        if attempt == retry_attempts:
+                            frappe.log_error(
+                                frappe.get_traceback(),
+                                f"E-Invoice {file_label} Fetch Error",
+                            )
+                        elif retry_delay_seconds:
+                            time.sleep(retry_delay_seconds)
         doc.db_set("custom_uae_einvoice_status", invoice_status)
+       
+        if not reporting_status and invoice_status == "Success":
+            reporting_status = "pending"
         if reporting_status:
             doc.db_set("custom_reporting_status", reporting_status)
         if document_id:
             doc.db_set("custom_document_id", document_id)
         frappe.db.commit()
-        exchange_status = None
-
-        if isinstance(response_data, dict):
-            data = response_data.get("data", {})
-            exchange_status = data.get("exchange_status")
-        if status_code == 200:
-            company_doc = frappe.get_doc("Company", doc.company)
-            
+        if status_code in (200, 201):
             success_log(
                 title="UAE E-Invoice Submitted Successfully",
                 document_id=document_id,
-                participant_id=company_doc.custom_participant_id,
+                participant_id=settings.participant_id,
                 invoice_number=doc.name,
                 reporting_status=reporting_status,
                 exchange_status=exchange_status,
                 status=invoice_status,
                 submit_response=response_text,
             )
-        # frappe.msgprint(
-        #     _("Flick Response Stored. Status: {0}").format(invoice_status)
-        # )
 
-    except Exception:
+    except Exception as e:
         frappe.log_error(frappe.get_traceback(), "UAE eInvoice Submit Error")
-
         frappe.msgprint(
-            _("E-Invoice processing failed. Check Submit Response field.")
+            _("E-Invoice processing failed: {0}").format(str(e))
         )
 
 
@@ -240,17 +150,14 @@ def bulk_send_invoices(invoices: list | str):
 
             status = doc.custom_uae_einvoice_status
 
-            # Skip already submitted invoices
             if status == "Success":
                 skipped.append(invoice)
                 continue
 
-            # If invoice is Draft → Submit first
             if doc.docstatus == 0 and company_doc.custom_uae_einvoice_enabled == 1:
                 doc.submit()
                 success.append(invoice)
 
-            # If invoice is Submitted → Send to FTA
             elif doc.docstatus == 1 and company_doc.custom_uae_einvoice_enabled == 1:
                 generate_and_send_einvoice(doc)
                 success.append(invoice)
