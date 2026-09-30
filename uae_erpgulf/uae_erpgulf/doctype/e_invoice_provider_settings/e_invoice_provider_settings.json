@@ -1,10 +1,12 @@
 {
  "actions": [],
  "allow_rename": 1,
+ "autoname": "field:provider_name",
  "creation": "2026-09-08 14:49:06.016250",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "provider_name",
   "company",
   "provider",
   "enabled",
@@ -293,15 +295,22 @@
    "fieldtype": "Datetime",
    "label": "Token Expires At",
    "read_only": 1
+  },
+  {
+   "fieldname": "provider_name",
+   "fieldtype": "Data",
+   "label": "Provider Name",
+   "unique": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-09 15:49:25.207779",
+ "modified": "2026-09-30 10:03:00.773856",
  "modified_by": "Administrator",
  "module": "uae_erpgulf",
  "name": "E-Invoice Provider Settings",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {

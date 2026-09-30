@@ -297,6 +297,7 @@ scheduler_events = {
 uae_einvoice_providers = {
     "Flick Network L.L.C": "uae_erpgulf.uae_erpgulf.providers.flick.adapter.FlickAdapter",
     "Marmin AI Software Design LLC": "uae_erpgulf.uae_erpgulf.providers.marmin.adapter.MarminAdapter",
+    "Suntech Business Solutions DMCC": "uae_erpgulf.uae_erpgulf.providers.suntech.adapter.SuntechAdapter",
 }
 
 import uae_erpgulf.overrides.return_validation

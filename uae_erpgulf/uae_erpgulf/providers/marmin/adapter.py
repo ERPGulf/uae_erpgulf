@@ -393,7 +393,7 @@ class MarminAdapter(BaseAdapter):
         "Secret field. There's nothing to click here for that - Subscribe "
         "Webhook / Get Subscription / Webhook Logs only exist for providers "
         "(like Flick) that expose an actual API for it."
-    )
+    ) # nosemgrep: frappe-semgrep-rules.rules.frappe-breaks-multitenancy
 
     def register_webhook(self):
         frappe.throw(self._WEBHOOK_NOT_AN_API_MESSAGE)
