@@ -149,6 +149,10 @@ class SuntechAdapter(BaseAdapter):
     # Completed - fetch them later with the Get Document buttons or webhook.
     AUTO_FETCH_DOCUMENTS_ON_SUBMIT = False
 
+    # get_document_status attaches the XML / PDF itself (Suntech's S3 paths are
+    # only on the status body), so the common status_sync must not fetch them.
+    ATTACH_DOCUMENTS_IN_SYNC = False
+
     # ---------------------------------------------------------------- auth
     def get_api_url(self):
         """Base URL may be entered with or without /api/v1."""
@@ -258,16 +262,6 @@ class SuntechAdapter(BaseAdapter):
         except Exception:
             response_data = response.text
 
-        # Background check right after submit (runs on the worker, not the
-        # scheduler): poll the status a few times until it is final.
-        if response.status_code in (200, 201):
-            frappe.enqueue(
-                "uae_erpgulf.uae_erpgulf.providers.suntech.adapter.poll_suntech_status",
-                queue="long",
-                doctype=doctype,
-                name=doc.name,
-                enqueue_after_commit=True,
-            )
         return response.status_code, response_data
 
     def _invoice_type_code(self, doctype, doc):
@@ -861,77 +855,6 @@ def _attach_documents_if_ready(doctype, invoice_name, body):
         except Exception:
             # attach.py already wrote the Error Log; drop its popup message
             del frappe.local.message_log[messages_before:]
-
-
-def poll_suntech_status(doctype, name, attempts=6, wait=20):
-    """Background job enqueued by submit_invoice: checks the status every
-    `wait` seconds until it is final (reported / rejected / failed).
-    get_document_status also attaches the XML / PDF when ready."""
-    import time
-
-    for _i in range(attempts):
-        time.sleep(wait)
-        try:
-            doc = frappe.get_doc(doctype, name)
-            if not doc.get("custom_document_id"):
-                continue
-            settings = frappe.get_doc(
-                "E-Invoice Provider Settings",
-                {"company": doc.company, "provider": SUNTECH_PROVIDER_NAME, "enabled": 1},
-            )
-            result = SuntechAdapter(settings).get_document_status(doctype, doc)
-            status = (result.get("reporting_status") or "").lower()
-            if status:
-                frappe.db.set_value(doctype, name, "custom_reporting_status", status)
-                frappe.db.commit()  # nosemgrep: frappe-manual-commit
-            if status in ("reported", "rejected", "failed"):
-                break
-        except Exception:
-            frappe.log_error(frappe.get_traceback(), f"Suntech Poll Error - {name}")
-            break
-
-
-def sync_pending_suntech_invoices():
-    """Scheduled (hooks.py): for submitted Suntech invoices that aren't
-    finished yet - not reported, or XML / PDF still missing - refresh the
-    status and attach the XML / PDF as soon as Suntech has them."""
-    companies = frappe.get_all(
-        "Company", filters={"custom_accredited_service_providers": SUNTECH_PROVIDER_NAME}, pluck="name"
-    )
-    if not companies:
-        return
-
-    since = frappe.utils.add_days(frappe.utils.nowdate(), -7)
-    for doctype in ("Sales Invoice", "Purchase Invoice"):
-        rows = frappe.get_all(
-            doctype,
-            filters={
-                "docstatus": 1,
-                "company": ["in", companies],
-                "custom_document_id": ["is", "set"],
-                "posting_date": [">=", since],
-            },
-            or_filters={
-                "custom_reporting_status": ["not in", ["reported", "rejected", "failed"]],
-                "custom_document_xml": ["is", "not set"],
-                "custom_document_pdf": ["is", "not set"],
-            },
-            pluck="name",
-            limit=50,
-        )
-        for name in rows:
-            try:
-                doc = frappe.get_doc(doctype, name)
-                settings = frappe.get_doc(
-                    "E-Invoice Provider Settings",
-                    {"company": doc.company, "provider": SUNTECH_PROVIDER_NAME, "enabled": 1},
-                )
-                result = SuntechAdapter(settings).get_document_status(doctype, doc)
-                if result.get("reporting_status"):
-                    frappe.db.set_value(doctype, name, "custom_reporting_status", result["reporting_status"])
-                frappe.db.commit()  # nosemgrep: frappe-manual-commit
-            except Exception:
-                frappe.log_error(frappe.get_traceback(), f"Suntech Status Sync Error - {name}")
 
 
 # ---------------------------------------------------------------- webhook
