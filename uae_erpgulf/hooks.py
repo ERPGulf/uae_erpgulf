@@ -287,8 +287,11 @@ fixtures = [
 ]
 scheduler_events = {
     "cron": {
-         "* * * * *": [
+        "* * * * *": [
             "uae_erpgulf.uae_erpgulf.webhook.update_webhook_logs"
+        ],
+        "*/5 * * * *": [
+            "uae_erpgulf.uae_erpgulf.status_sync.sync_pending_invoices"
         ]
     }
 }
