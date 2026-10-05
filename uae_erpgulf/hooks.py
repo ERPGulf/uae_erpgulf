@@ -293,7 +293,6 @@ scheduler_events = {
         "*/5 * * * *": [
             "uae_erpgulf.uae_erpgulf.providers.suntech.adapter.sync_pending_suntech_invoices",
             "uae_erpgulf.uae_erpgulf.providers.marmin.adapter.sync_pending_marmin_invoices",
-            
         ]
     }
 }
