@@ -384,7 +384,8 @@ class MarminAdapter(BaseAdapter):
         frappe.throw(_("Marmin API Error: {0}").format(response.text))
 
    
-    _WEBHOOK_NOT_AN_API_MESSAGE = _(
+    def _webhook_not_an_api_message(self):
+        return _(
         "Marmin doesn't have a webhook subscription API - it's configured only "
         "in the Marmin Web Application (Developer Dashboard > Webhooks tab), "
         "gated by an OTP sent to your email. To set it up: paste this row's "
@@ -393,16 +394,16 @@ class MarminAdapter(BaseAdapter):
         "Secret field. There's nothing to click here for that - Subscribe "
         "Webhook / Get Subscription / Webhook Logs only exist for providers "
         "(like Flick) that expose an actual API for it."
-    ) # nosemgrep: frappe-semgrep-rules.rules.frappe-breaks-multitenancy
+    )
 
     def register_webhook(self):
-        frappe.throw(self._WEBHOOK_NOT_AN_API_MESSAGE)
+        frappe.throw(self._webhook_not_an_api_message())
 
     def get_subscription(self):
-        frappe.throw(self._WEBHOOK_NOT_AN_API_MESSAGE)
+        frappe.throw(self._webhook_not_an_api_message())
 
     def get_webhook_deliveries(self):
-        frappe.throw(self._WEBHOOK_NOT_AN_API_MESSAGE)
+        frappe.throw(self._webhook_not_an_api_message())
 
     def get_webhook_listener_url(self):
         """The URL to paste into Marmin's Developer Dashboard > Webhooks"""
@@ -1181,6 +1182,81 @@ def is_marmin_active():
             "Company", {"custom_accredited_service_providers": MARMIN_PROVIDER_NAME}
         )
     )
+
+
+MARMIN_FINAL_STATUSES = ("reported", "rejected", "failed")
+
+
+def _attach_marmin_documents(doctype, invoice_name):
+    """Attach the XML / PDF if the invoice doesn't have them yet. Failures
+    are logged by attach.py, never raised, so the sync keeps going."""
+    from uae_erpgulf.uae_erpgulf.attach import get_document_pdf, get_document_xml
+
+    current = frappe.db.get_value(
+        doctype, invoice_name, ["custom_document_xml", "custom_document_pdf"], as_dict=True
+    ) or {}
+
+    for attached_field, fetch_fn in (
+        ("custom_document_xml", get_document_xml),
+        ("custom_document_pdf", get_document_pdf),
+    ):
+        if current.get(attached_field):
+            continue
+        messages_before = len(frappe.local.message_log)
+        try:
+            fetch_fn(doctype, invoice_name)
+        except Exception:
+            del frappe.local.message_log[messages_before:]
+
+
+def sync_pending_marmin_invoices():
+    """Scheduled (hooks.py): for submitted Marmin invoices that aren't
+    finished yet - not reported, or XML / PDF still missing - refresh the
+    status from peppol-status-logs and attach the XML / PDF once reported.
+    Safety net for webhooks that never arrived."""
+    companies = frappe.get_all(
+        "Company", filters={"custom_accredited_service_providers": MARMIN_PROVIDER_NAME}, pluck="name"
+    )
+    if not companies:
+        return
+
+    since = frappe.utils.add_days(frappe.utils.nowdate(), -7)
+    for doctype in ("Sales Invoice", "Purchase Invoice"):
+        rows = frappe.get_all(
+            doctype,
+            filters={
+                "docstatus": 1,
+                "company": ["in", companies],
+                "custom_document_id": ["is", "set"],
+                "posting_date": [">=", since],
+            },
+            or_filters={
+                "custom_reporting_status": ["not in", list(MARMIN_FINAL_STATUSES)],
+                "custom_document_xml": ["is", "not set"],
+                "custom_document_pdf": ["is", "not set"],
+            },
+            pluck="name",
+            limit=50,
+        )
+        for name in rows:
+            try:
+                doc = frappe.get_doc(doctype, name)
+                if not doc.get("custom_submit_response"):
+                    continue
+                settings = frappe.get_doc(
+                    "E-Invoice Provider Settings",
+                    {"company": doc.company, "provider": MARMIN_PROVIDER_NAME, "enabled": 1},
+                )
+                result = MarminAdapter(settings).get_document_status(doctype, doc)
+                status = result.get("reporting_status")
+                if status and status != doc.get("custom_reporting_status"):
+                    frappe.db.set_value(doctype, name, "custom_reporting_status", status)
+                if status == "reported":
+                    _attach_marmin_documents(doctype, name)
+                frappe.db.commit()  # nosemgrep: frappe-manual-commit
+            except Exception:
+                frappe.db.rollback()
+                frappe.log_error(frappe.get_traceback(), f"Marmin Status Sync Error - {name}")
 
 
 MARMIN_WEBHOOK_SIGNATURE_HEADER = "x-marmin-signature"
