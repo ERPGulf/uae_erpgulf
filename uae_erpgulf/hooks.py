@@ -287,8 +287,11 @@ fixtures = [
 ]
 scheduler_events = {
     "cron": {
-         "* * * * *": [
+        "* * * * *": [
             "uae_erpgulf.uae_erpgulf.webhook.update_webhook_logs"
+        ],
+        "*/5 * * * *": [
+            "uae_erpgulf.uae_erpgulf.status_sync.sync_pending_invoices"
         ]
     }
 }
@@ -298,6 +301,8 @@ uae_einvoice_providers = {
     "Flick Network L.L.C": "uae_erpgulf.uae_erpgulf.providers.flick.adapter.FlickAdapter",
     "Marmin AI Software Design LLC": "uae_erpgulf.uae_erpgulf.providers.marmin.adapter.MarminAdapter",
     "Suntech Business Solutions DMCC": "uae_erpgulf.uae_erpgulf.providers.suntech.adapter.SuntechAdapter",
+    # "Fynamics Techno Solutions FZCO": "uae_erpgulf.uae_erpgulf.providers.fynamics.adapter.FynamicsAdapter",
 }
+
 
 import uae_erpgulf.overrides.return_validation

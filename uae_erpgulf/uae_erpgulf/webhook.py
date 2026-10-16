@@ -7,10 +7,6 @@ from uae_erpgulf.uae_erpgulf.provider_settings import (
 )
 from uae_erpgulf.uae_erpgulf.providers import get_adapter
 
-# Backward compatibility only: webhook subscriptions registered before the
-# listener moved still POST to uae_erpgulf.uae_erpgulf.webhook.flick_webhook_listener.
-# The real listener is providers/flick/adapter.py. Delete this import once
-# every company has re-registered its webhook (Register Webhook button).
 from uae_erpgulf.uae_erpgulf.providers.flick.adapter import flick_webhook_listener  # noqa: E402,F401
 
 
