@@ -881,7 +881,7 @@ def _verify_suntech_jwt(token):
     return None
 
 
-@frappe.whitelist(allow_guest=True)  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
+@frappe.whitelist(allow_guest=True,methods=["POST"])  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
 def suntech_webhook_listener():
     """Suntech webhook: {event, invoice_id, ...}. The payload is only a
     pointer (§12.2) - fetch the invoice for the real state."""

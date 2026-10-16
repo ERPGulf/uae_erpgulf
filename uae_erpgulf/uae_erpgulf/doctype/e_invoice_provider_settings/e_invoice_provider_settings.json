@@ -62,7 +62,7 @@
    "fieldname": "provider",
    "fieldtype": "Select",
    "label": "Provider",
-   "options": "BDO Digital Solutions FZ-LLC\nComarch Middle East FZ LLC\nComplyance Electronics L.L.C\nCovoro AI \u2013 FZCO\nCygnet Digital IT Solutions L.L.C\nDefmacro Software DMCC (ClearTax)\nDeloitte & Touche \u2013 M E\nDP World Digital GCC FZE\nEDICOM Middle East Services\nFlick Network L.L.C\nFynamics Techno Solutions \u2013 FZCO\nInfinite IT Solutions DMCC\nInformation Dynamics LLC\nInvoiceNow biz \u2013 F.Z.C\nInvoiceQ For Information Technology Limited\nKGRN Chartered Accountants\nMarmin AI Software Design LLC\nMicrovista Technologies LLC\nMoore JFC Consulting LLC\nOrchida Soft Computer Systems LLC\nOxinus Holding Limited\nPagero Gulf FZ-LLC\nSAP Middle East & North Africa LLC\nSkill Quotient Technologies\nSpendconsole FZ LLC\nSunTec (Xelerate) Business Solutions DMCC\nSuntech Business Solutions DMCC\nTally Software Solutions FZCO\nTAXILLA FINOPS 360 \u2013 FZCO\nTaxlabs.ai\nTechventures Information Technology Services\nTronStride FZC"
+   "options": "BDO Digital Solutions FZ-LLC\nComarch Middle East FZ LLC\nComplyance Electronics L.L.C\nCovoro AI \u2013 FZCO\nCygnet Digital IT Solutions L.L.C\nDefmacro Software DMCC (ClearTax)\nDeloitte & Touche \u2013 M E\nDP World Digital GCC FZE\nEDICOM Middle East Services\nFlick Network L.L.C\nFynamics Techno Solutions FZCO\nInfinite IT Solutions DMCC\nInformation Dynamics LLC\nInvoiceNow biz \u2013 F.Z.C\nInvoiceQ For Information Technology Limited\nKGRN Chartered Accountants\nMarmin AI Software Design LLC\nMicrovista Technologies LLC\nMoore JFC Consulting LLC\nOrchida Soft Computer Systems LLC\nOxinus Holding Limited\nPagero Gulf FZ-LLC\nSAP Middle East & North Africa LLC\nSkill Quotient Technologies\nSpendconsole FZ LLC\nSunTec (Xelerate) Business Solutions DMCC\nSuntech Business Solutions DMCC\nTally Software Solutions FZCO\nTAXILLA FINOPS 360 \u2013 FZCO\nTaxlabs.ai\nTechventures Information Technology Services\nTronStride FZC"
   },
   {
    "default": "0",
@@ -306,7 +306,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-30 10:03:00.773856",
+ "modified": "2026-10-06 14:21:08.547165",
  "modified_by": "Administrator",
  "module": "uae_erpgulf",
  "name": "E-Invoice Provider Settings",
