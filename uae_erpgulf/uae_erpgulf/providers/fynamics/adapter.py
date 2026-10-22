@@ -24,7 +24,7 @@ from uae_erpgulf.uae_erpgulf.providers.pint import (
     vat_category_code as _vat_category_code,
 )
 
-FYNAMICS_PROVIDER_NAME = "Fynamics Techno Solutions – FZCO"
+FYNAMICS_PROVIDER_NAME = "Fynamics Techno Solutions FZCO"
 FYNAMICS_TIMEOUT = 60
 API_PREFIX = "/partner/api"
 LINE_UNIT_CODE_KEY = "InvoicedUniteCode"

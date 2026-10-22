@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 import frappe
+from frappe import _
 DEFAULT_TOKEN_TTL_SEC = 55 * 60
 
 
@@ -13,6 +14,15 @@ class BaseAdapter:
         """settings: the active E-Invoice Provider Settings doc for one
         company. Every adapter method reads whatever it needs off this."""
         self.settings = settings
+
+    def _not_supported(self, feature):
+        """Clear user-facing message for a method this adapter does not
+        implement. Leave optional base methods alone in a subclass and the
+        button that calls them shows this instead of a traceback."""
+        frappe.throw(
+            _("{0} is not supported by {1}.").format(feature, self.settings.provider),
+            title=_("Not supported"),
+        )
 
     # ---- shared helpers (every adapter gets these for free) ----
     def get_base_url(self):
@@ -83,27 +93,27 @@ class BaseAdapter:
         return self._fetch_token()
 
     def _fetch_token(self):
-        raise NotImplementedError
+        self._not_supported("Token fetch")
 
     # ---- methods every adapter should implement ----
     def get_auth_headers(self, extra=None):
-        raise NotImplementedError
+        self._not_supported("Authentication")
 
     def verify_auth(self):
-        raise NotImplementedError
+        self._not_supported("Test Auth")
 
     def get_participant_details(self):
-        raise NotImplementedError
+        self._not_supported("Participant details")
 
     def lookup_peppol_id(self, peppol_id):
-        raise NotImplementedError
+        self._not_supported("Peppol ID lookup")
 
     def update_participant(self, company_doc):
-        raise NotImplementedError
+        self._not_supported("Participant update")
 
     def submit_invoice(self, doctype, doc, json_data=None):
         """Build this ASP's own payload for doc and send it"""
-        raise NotImplementedError
+        self._not_supported("Invoice submission")
 
     def parse_submit_response(self, status_code, response_data):
         """Pull the fields the shared submit flow stores on the invoice out
@@ -140,22 +150,22 @@ class BaseAdapter:
 
     def get_document_status(self, doctype, doc):
         """Should return {"http_status": <int>, "response": <body>}."""
-        raise NotImplementedError
+        self._not_supported("Document status")
 
     def get_document_xml(self, doctype, doc):
-        raise NotImplementedError
+        self._not_supported("XML download")
 
     def get_document_pdf(self, doctype, doc):
-        raise NotImplementedError
+        self._not_supported("PDF download")
 
     def register_webhook(self):
-        raise NotImplementedError
+        self._not_supported("Webhook subscription")
 
     def get_subscription(self):
-        raise NotImplementedError
+        self._not_supported("Webhook subscription details")
 
     def get_webhook_deliveries(self):
-        raise NotImplementedError
+        self._not_supported("Webhook delivery log")
 
     def parse_incoming_invoice(self, invoice_json):
         """Turn this ASP's incoming (received) invoice JSON into one common
@@ -171,7 +181,7 @@ class BaseAdapter:
                        "amount", "vat_rate"}],
         }
         """
-        raise NotImplementedError
+        self._not_supported("Incoming invoice import")
 
     def get_webhook_listener_url(self):
         """The URL this ASP's own server should call to deliver webhook"""

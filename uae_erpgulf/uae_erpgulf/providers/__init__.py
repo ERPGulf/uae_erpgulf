@@ -41,6 +41,24 @@ def _get_registry():
     return merged
 
 
+def registered_providers():
+    """Provider names that have an adapter registered in hooks.py
+    (uae_einvoice_providers). Anything else cannot submit e-invoices."""
+    return sorted(_get_registry().keys())
+
+
+def assert_provider_registered(provider):
+    """Throw a clear message when a provider name has no adapter."""
+    if provider in _get_registry():
+        return
+    frappe.throw(
+        _(
+            "No adapter is registered for provider '{0}'. Providers with an adapter: {1}. "
+            "Add one to uae_einvoice_providers in hooks.py (see the Multi-ASP Developer Guide)."
+        ).format(provider, ", ".join(registered_providers()) or "none")
+    )
+
+
 def get_adapter(settings):
     """settings: an E-Invoice Provider Settings doc. Returns an adapter
     instance already bound to that row, ready to call .submit_invoice(...),
