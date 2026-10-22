@@ -1,6 +1,7 @@
 """this file contains the functions to validations."""
 import frappe
 from frappe import _
+from uae_erpgulf.uae_erpgulf.providers import assert_provider_registered
 
 def validate_accredited_service_provider(doc, method=None):
     """Runs before a Sales/Purchase Invoice is submitted. """
@@ -14,6 +15,9 @@ def validate_accredited_service_provider(doc, method=None):
         frappe.throw(_(
             "Select an Accredited Service Provider on {0} before submitting e-invoices."
         ).format(doc.company))
+
+    # Fail here, with a clear message, rather than deep inside submit.
+    assert_provider_registered(provider)
 
     has_settings = frappe.db.exists(
         "E-Invoice Provider Settings",
