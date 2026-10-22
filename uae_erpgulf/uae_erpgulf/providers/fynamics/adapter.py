@@ -6,108 +6,42 @@ import frappe
 import requests
 from frappe import _
 from frappe.utils import add_days, now_datetime, nowdate, strip_html
-from uae_erpgulf.uae_erpgulf.country_code import country_code_mapping
 from uae_erpgulf.uae_erpgulf.providers.base import BaseAdapter
+# Shared PINT-AE helpers and code tables live in providers/pint.py. The
+# underscore aliases keep this file's call sites unchanged.
+from uae_erpgulf.uae_erpgulf.providers.pint import (
+    LEGAL_REGISTRATION_TYPES,
+    TWO,
+    country_code as _country_code,
+    dec as _dec,
+    endpoint as _endpoint,
+    money as _money,
+    num as _num,
+    resolve_address_codes,
+    split_code as _split_code,
+    transaction_type_flags as _transaction_type,
+    uom_to_unece_table,
+    vat_category_code as _vat_category_code,
+)
 
 FYNAMICS_PROVIDER_NAME = "Fynamics Techno Solutions – FZCO"
 FYNAMICS_TIMEOUT = 60
 API_PREFIX = "/partner/api"
 LINE_UNIT_CODE_KEY = "InvoicedUniteCode"
 
-DEFAULT_ENDPOINT_SCHEME = "0235"  # UAE TRN-based Peppol IDs (guide §3)
-VAT_CODES = ("S", "Z", "E", "AE", "O", "N")
-LEGAL_REGISTRATION_TYPES = {
-    "Commercial/Trade license": "TL",
-    "Emirates ID": "EID",
-    "Passport": "PAS",
-    "Cabinet decision": "CD",
-}
-
-UOM_TO_UNECE = {
-    "nos": "H87", "unit": "H87", "each": "H87", "pcs": "H87", "piece": "H87",
-    "kg": "KGM", "kilogram": "KGM", "gram": "GRM", "gm": "GRM",
-    "litre": "LTR", "liter": "LTR", "ltr": "LTR",
-    "meter": "MTR", "metre": "MTR", "mtr": "MTR",
-    "box": "BX", "pair": "PR", "dozen": "DZN", "hour": "HUR", "day": "DAY",
-}
-
 # document status words -> custom_reporting_status
 SUCCESS_WORDS = ("SUCCESS", "SUCCESSFUL", "DELIVERED", "ACCEPTED", "REPORTED", "COMPLETED", "DONE")
 FAILED_WORDS = ("FAILED", "FAILURE", "ERROR", "REJECTED", "INVALID")
 PENDING_WORDS = ("QUEUED", "PROCESSING", "PENDING", "IN_PROGRESS", "SUBMITTED", "RECEIVED")
 
-TWO = Decimal("0.01")
+# Fynamics wants H87 (not EA) for piece-type units.
+UOM_TO_UNECE = uom_to_unece_table(piece_code="H87")
 
 
 # ---------------------------------------------------------------- helpers
-def _dec(value):
-    return Decimal(str(value or 0))
-
-
-def _money(value):
-    return str(_dec(value).quantize(TWO, ROUND_HALF_UP))
-
-
-def _num(value):
-    """Plain number string without trailing zeros: 1000.000 -> '1000'."""
-    d = _dec(value).normalize()
-    return format(d, "f")
-
-
 def _s(value):
     """Fynamics sends every unused field as an empty string."""
     return "" if value is None else str(value)
-
-
-def _emirate_code(emirate_name):
-    if not emirate_name:
-        return None
-    return {
-        "abu dhabi": "AUH", "dubai": "DXB", "sharjah": "SHJ", "ajman": "AJM",
-        "umm al quwain": "UAQ", "ras al khaimah": "RAK", "fujairah": "FUJ",
-    }.get(emirate_name.strip().lower())
-
-
-def _vat_category_code(label):
-    """'S - Standard rated' -> 'S'."""
-    if not label:
-        return None
-    code = label.split(" - ")[0].strip().upper()
-    if code not in VAT_CODES:
-        frappe.throw(_("Invalid VAT Category: {0}. Must be one of S, Z, E, AE, O, N.").format(label))
-    return code
-
-
-def _split_code(label):
-    """'30 - Credit transfer' / 'DL8.61.1.A-Cancellation' -> (code, text)."""
-    raw = (label or "").strip()
-    for sep in (" - ", "-"):
-        if sep in raw:
-            code, text = raw.split(sep, 1)
-            return code.strip(), text.strip()
-    return raw, raw
-
-
-def _transaction_type(doc):
-    """custom_invoice_transaction_type_code -> 8-character 0/1 flag string."""
-    raw = (doc.get("custom_invoice_transaction_type_code") or "").split(":")[0].strip()
-    bits = "".join("1" if c == "1" else "0" for c in raw)
-    return (bits + "00000000")[:8]
-
-
-def _endpoint(peppol_id):
-    """'0235:1234567890' -> ('1234567890', '0235'); '1234567890' -> default scheme."""
-    peppol_id = (peppol_id or "").strip()
-    if ":" in peppol_id:
-        scheme, value = peppol_id.split(":", 1)
-        return value.strip(), scheme.strip()
-    return peppol_id, DEFAULT_ENDPOINT_SCHEME
-
-
-def _country_code(country_name):
-    if not country_name:
-        return None
-    return country_code_mapping().get(country_name.strip().lower())
 
 
 def _postal_address(address):
@@ -117,17 +51,7 @@ def _postal_address(address):
             "StreetName": "", "AdditionalStreetName": "", "CityName": "", "PostalZone": "",
             "AddressLine": "", "CountrySubentity": "", "CountryCode": "",
         }
-    country = _country_code(address.country)
-    if not country:
-        frappe.throw(_("Address {0} has no recognised Country.").format(address.name))
-    subentity = _emirate_code(address.get("emirate"))
-    if not subentity:
-        if country == "AE":
-            frappe.throw(
-                _("Address {0} needs a recognised UAE emirate (Abu Dhabi, Dubai, Sharjah, "
-                  "Ajman, Umm Al Quwain, Ras Al Khaimah or Fujairah).").format(address.name)
-            )
-        subentity = address.get("state") or address.get("city")
+    country, subentity = resolve_address_codes(address)
     return {
         "StreetName": _s(address.address_line1),
         "AdditionalStreetName": _s(address.address_line2),

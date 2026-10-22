@@ -5,6 +5,11 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from frappe import _
 from uae_erpgulf.uae_erpgulf.country_code import country_code_mapping
+# Shared PINT-AE code tables live in providers/pint.py.
+from uae_erpgulf.uae_erpgulf.providers.pint import (
+    emirate_code as get_uae_emirate_code,
+    vat_category_code as get_vat_category_code,
+)
 import json
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -931,26 +936,6 @@ def send_invoice_json(invoice_number:str):
         "message": _("Invoice JSON generated and attached successfully"),
         "file_url": result["file_url"]
     }
-def get_uae_emirate_code(emirate_name):
-    """
-    Convert full UAE emirate name to PEPPOL subdivision code.
-    Required values:
-    AUH, DXB, SHJ, AJM, UAQ, RAK, FUJ
-    """
-    if not emirate_name:
-        return None
-
-    mapping = {
-        "abu dhabi": "AUH",
-        "dubai": "DXB",
-        "sharjah": "SHJ",
-        "ajman": "AJM",
-        "umm al quwain": "UAQ",
-        "ras al khaimah": "RAK",
-        "fujairah": "FUJ",
-    }
-
-    return mapping.get(emirate_name.strip().lower())
 def get_item_line_extension_amount(item):
     """
     Calculate line extension amount per invoice line.
@@ -958,49 +943,3 @@ def get_item_line_extension_amount(item):
     """
     amount = (item.qty * item.rate)
     return str(round(amount, 2))    
-def get_vat_category_code(vat_category_label):
-    """
-    Convert VAT category label to PEPPOL VAT category code.
-    Allowed codes:
-    S, Z, E, AE, O, N
-    """
-
-    if not vat_category_label:
-        return None
-
-    mapping = {
-        "s - standard rated": "S",
-        "standard rated": "S",
-        "s": "S",
-
-        "z - zero rated": "Z",
-        "zero rated": "Z",
-        "z": "Z",
-
-        "e - exempt from tax": "E",
-        "exempt from tax": "E",
-        "e": "E",
-
-        "ae - vat reverse charge": "AE",
-        "vat reverse charge": "AE",
-        "reverse charge": "AE",
-        "ae": "AE",
-
-        "o - not subject to vat": "O",
-        "not subject to vat": "O",
-        "o": "O",
-
-        "n - margin scheme": "N",
-        "margin scheme": "N",
-        "n": "N",
-    }
-
-    code = mapping.get(vat_category_label.strip().lower())
-
-    if not code:
-        frappe.throw(_(
-            f"Invalid VAT Category: {vat_category_label}. "
-            "Must be one of S, Z, E, AE, O, N."
-        ))
-
-    return code

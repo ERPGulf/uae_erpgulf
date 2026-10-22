@@ -1,14 +1,32 @@
 """Suntech Business Solutions DMCC adapter (Tax Compliance Agent platform)."""
 
 import json
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 import frappe
 import requests
 from frappe import _
 from frappe.utils import now_datetime, strip_html
-from uae_erpgulf.uae_erpgulf.country_code import country_code_mapping
 from uae_erpgulf.uae_erpgulf.providers.base import BaseAdapter
+# Shared PINT-AE helpers and code tables live in providers/pint.py. The
+# underscore aliases keep this file's call sites unchanged.
+from uae_erpgulf.uae_erpgulf.providers.pint import (
+    DISCREPANCY_CODES,
+    LEGAL_REGISTRATION_TYPES,
+    PROCESS_BILLING,
+    PROCESS_SELF_BILLING,
+    TWO,
+    UOM_TO_UNECE,
+    dec as _dec,
+    endpoint as _endpoint,
+    money as _money,
+    qty as _qty,
+    resolve_address_codes,
+    split_code as _split_code,
+    transaction_type_flags as _transaction_type_code,
+    vat_category_code as _vat_category_code,
+    country_code as pint_country_code,
+)
 
 SUNTECH_PROVIDER_NAME = "Suntech Business Solutions DMCC"
 SUNTECH_TIMEOUT = 60
@@ -18,119 +36,12 @@ SUNTECH_TIMEOUT = 60
 # suntech_webhook_listener.
 SUNTECH_WEBHOOK_HEADER = "X-TCA-Token"
 
-# Peppol scheme for UAE participants - used only when the stored Peppol ID
-# doesn't carry its own scheme prefix (e.g. "0235:1234567890").
-DEFAULT_ENDPOINT_SCHEME = "0235"
-
-# PINT AE process identifiers (Suntech docs §9 / §11.2)
-PROCESS_BILLING = {
-    "profile_id": "urn:peppol:bis:billing",
-    "customization_id": "urn:peppol:pint:billing-1@ae-1",
-}
-PROCESS_SELF_BILLING = {
-    "profile_id": "urn:peppol:bis:selfbilling",
-    "customization_id": "urn:peppol:pint:selfbilling-1@ae-1",
-}
-
-DISCREPANCY_CODES = {"DL8.61.1.A", "DL8.61.1.B", "DL8.61.1.C", "DL8.61.1.D", "DL8.61.1.E", "VD"}
-
-# custom_legal_registration_identifier_type option -> BTAE-15/16 type code
-LEGAL_REGISTRATION_TYPES = {
-    "Commercial/Trade license": "TL",
-    "Emirates ID": "EID",
-    "Passport": "PAS",
-    "Cabinet decision": "CD",
-}
-
-UOM_TO_UNECE = {
-    "nos": "EA", "unit": "EA", "each": "EA", "pcs": "EA", "piece": "EA",
-    "kg": "KGM", "kilogram": "KGM", "gram": "GRM", "gm": "GRM",
-    "litre": "LTR", "liter": "LTR", "ltr": "LTR",
-    "meter": "MTR", "metre": "MTR", "mtr": "MTR",
-    "box": "BX", "pair": "PR", "dozen": "DZN", "hour": "HUR", "day": "DAY",
-}
-
 # invoice status (§14.1) -> custom_reporting_status
 STATUS_TO_REPORTING = {1: "pending", 2: "reported", 3: "rejected", 4: "failed"}
 
-TWO = Decimal("0.01")
-SIX = Decimal("0.000001")
 
-
-# ---------------------------------------------------------------- helpers
-def _dec(value):
-    return Decimal(str(value or 0))
-
-
-def _money(value):
-    return str(_dec(value).quantize(TWO, ROUND_HALF_UP))
-
-
-def _qty(value):
-    return str(_dec(value).quantize(SIX, ROUND_HALF_UP))
-
-
-def _emirate_code(emirate_name):
-    if not emirate_name:
-        return None
-    return {
-        "abu dhabi": "AUH", "dubai": "DXB", "sharjah": "SHJ", "ajman": "AJM",
-        "umm al quwain": "UAQ", "ras al khaimah": "RAK", "fujairah": "FUJ",
-    }.get(emirate_name.strip().lower())
-
-
-def _vat_category_code(label):
-    """'S - Standard rated' -> 'S' (code before ' - ')."""
-    if not label:
-        return None
-    code = label.split(" - ")[0].strip().upper()
-    if code not in ("S", "Z", "E", "AE", "O", "N"):
-        frappe.throw(_("Invalid VAT Category: {0}. Must be one of S, Z, E, AE, O, N.").format(label))
-    return code
-
-
-def _split_code(label):
-    """'DL8.61.1.A-Cancellation' / '30 - Credit transfer' -> (code, text)."""
-    raw = (label or "").strip()
-    for sep in (" - ", "-"):
-        if sep in raw:
-            code, text = raw.split(sep, 1)
-            return code.strip(), text.strip()
-    return raw, raw
-
-
-def _transaction_type_code(doc):
-    """custom_invoice_transaction_type_code ('1XXXXXX : Free trade zone
-    transaction') -> the 8-character 0/1 flag string BTAE-02 needs."""
-    raw = (doc.get("custom_invoice_transaction_type_code") or "").split(":")[0].strip()
-    bits = "".join("1" if c == "1" else "0" for c in raw)
-    return (bits + "00000000")[:8]
-
-
-def _endpoint(peppol_id):
-    """'0235:1234567890' -> ('1234567890', '0235'); '1234567890' -> default scheme."""
-    peppol_id = (peppol_id or "").strip()
-    if ":" in peppol_id:
-        scheme, value = peppol_id.split(":", 1)
-        return value.strip(), scheme.strip()
-    return peppol_id, DEFAULT_ENDPOINT_SCHEME
-
-
-def _address_block(address_data, country_dict):
-    country_code = None
-    if address_data.country and address_data.country.lower() in country_dict:
-        country_code = country_dict[address_data.country.lower()]
-    if not country_code:
-        frappe.throw(_("Address {0} has no recognised Country.").format(address_data.name))
-
-    subdivision = _emirate_code(address_data.get("emirate"))
-    if not subdivision:
-        if country_code == "AE":
-            frappe.throw(
-                _("Address {0} needs a recognised UAE emirate (Abu Dhabi, Dubai, Sharjah, "
-                  "Ajman, Umm Al Quwain, Ras Al Khaimah or Fujairah).").format(address_data.name)
-            )
-        subdivision = address_data.state or address_data.city
+def _address_block(address_data):
+    country_code, subdivision = resolve_address_codes(address_data)
 
     return {
         "address_line_1": address_data.address_line1,
@@ -275,15 +186,14 @@ class SuntechAdapter(BaseAdapter):
     def _build_payload(self, doctype, doc):
         type_code = self._invoice_type_code(doctype, doc)
         is_credit = type_code in ("381", "81", "261")
-        country_dict = country_code_mapping()
 
         if doctype == "Purchase Invoice":
-            seller = self._party_from_supplier(doc, country_dict)
-            buyer = self._party_from_company(doc, country_dict, is_seller=False)
+            seller = self._party_from_supplier(doc)
+            buyer = self._party_from_company(doc, is_seller=False)
             process_control = PROCESS_SELF_BILLING
         else:
-            seller = self._party_from_company(doc, country_dict, is_seller=True)
-            buyer = self._party_from_customer(doc, country_dict)
+            seller = self._party_from_company(doc, is_seller=True)
+            buyer = self._party_from_customer(doc)
             process_control = PROCESS_BILLING
 
         built = self._build_lines(doc)
@@ -386,7 +296,7 @@ class SuntechAdapter(BaseAdapter):
             "electronic_address_scheme": scheme,
         }
 
-    def _party_from_company(self, doc, country_dict, is_seller):
+    def _party_from_company(self, doc, is_seller):
         from frappe.contacts.doctype.address.address import get_default_address
 
         company = frappe.get_doc("Company", doc.company)
@@ -413,11 +323,11 @@ class SuntechAdapter(BaseAdapter):
             self.settings.participant_id,
             _("E-Invoice Provider Settings (Participant ID)"),
         )
-        party.update(_address_block(address, country_dict))
+        party.update(_address_block(address))
         self._add_legal_registration(party, company, required=is_seller)
         return party
 
-    def _party_from_customer(self, doc, country_dict):
+    def _party_from_customer(self, doc):
         customer = frappe.get_doc("Customer", doc.customer)
         address_name = doc.get("customer_address") or customer.get("customer_primary_address")
         if not address_name:
@@ -430,7 +340,7 @@ class SuntechAdapter(BaseAdapter):
             customer.get("custom_peppol_id"),
             _("Customer {0}").format(doc.customer),
         )
-        party.update(_address_block(address, country_dict))
+        party.update(_address_block(address))
         if doc.get("contact_display"):
             party["contact_point"] = doc.contact_display
         self._add_legal_registration(party, customer, required=False)
@@ -438,7 +348,7 @@ class SuntechAdapter(BaseAdapter):
             party["beneficiary_identifier"] = customer.custom_fz_beneficiary_id
         return party
 
-    def _party_from_supplier(self, doc, country_dict):
+    def _party_from_supplier(self, doc):
         supplier = frappe.get_doc("Supplier", doc.supplier)
         address_name = doc.get("supplier_address") or supplier.get("supplier_primary_address")
         if not address_name:
@@ -451,7 +361,7 @@ class SuntechAdapter(BaseAdapter):
             supplier.get("custom_peppol_id"),
             _("Supplier {0}").format(doc.supplier),
         )
-        party.update(_address_block(address, country_dict))
+        party.update(_address_block(address))
         if doc.get("contact_display"):
             party["contact_point"] = doc.contact_display
         # self-billing: the supplier is the seller, so its registration is required
@@ -493,7 +403,7 @@ class SuntechAdapter(BaseAdapter):
         if type_code == "PAS":
             issuing_country = party_doc.get("custom_passport_issuing_country")
             if issuing_country:
-                code = country_code_mapping().get(issuing_country.strip().lower())
+                code = pint_country_code(issuing_country)
                 if not code:
                     frappe.throw(
                         _("Passport Issuing Country {0} on {1} {2} isn't a recognised country.").format(
