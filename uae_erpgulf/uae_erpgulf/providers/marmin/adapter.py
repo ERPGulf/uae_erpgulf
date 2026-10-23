@@ -11,52 +11,14 @@ from frappe import _
 from datetime import timedelta
 from uae_erpgulf.uae_erpgulf.providers.base import BaseAdapter
 from uae_erpgulf.uae_erpgulf.country_code import country_code_mapping
-
-
-
-def _marmin_uae_emirate_code(emirate_name):
-    """Full UAE emirate name -> PEPPOL subdivision code"""
-    if not emirate_name:
-        return None
-
-    mapping = {
-        "abu dhabi": "AUH",
-        "dubai": "DXB",
-        "sharjah": "SHJ",
-        "ajman": "AJM",
-        "umm al quwain": "UAQ",
-        "ras al khaimah": "RAK",
-        "fujairah": "FUJ",
-    }
-
-    return mapping.get(emirate_name.strip().lower())
-
-
-def _marmin_vat_category_code(vat_category_label):
-    """VAT category label (e.g. "S - Standard Rated") -> PEPPOL VAT category
-    code (S, Z, E, AE, O, N). Identical mapping to json_einvoice.py's own
-    get_vat_category_code - copied in, not imported."""
-    if not vat_category_label:
-        return None
-
-    mapping = {
-        "s - standard rated": "S", "standard rated": "S", "s": "S",
-        "z - zero rated": "Z", "zero rated": "Z", "z": "Z",
-        "e - exempt from tax": "E", "exempt from tax": "E", "e": "E",
-        "ae - vat reverse charge": "AE", "vat reverse charge": "AE",
-        "reverse charge": "AE", "ae": "AE",
-        "o - not subject to vat": "O", "not subject to vat": "O", "o": "O",
-        "n - margin scheme": "N", "margin scheme": "N", "n": "N",
-    }
-
-    code = mapping.get(vat_category_label.strip().lower())
-    if not code:
-        frappe.throw(
-            _(
-                "Invalid VAT Category: {0}. Must be one of S, Z, E, AE, O, N."
-            ).format(vat_category_label)
-        )
-    return code
+# Shared PINT-AE helpers and code tables live in providers/pint.py. The
+# _marmin_* aliases keep this file's call sites unchanged.
+from uae_erpgulf.uae_erpgulf.providers.pint import (
+    DEFAULT_ENDPOINT_SCHEME,
+    UOM_TO_UNECE,
+    emirate_code as _marmin_uae_emirate_code,
+    vat_category_code as _marmin_vat_category_code,
+)
 
 
 def _marmin_sales_invoice_type_code(doc):
@@ -146,7 +108,7 @@ MARMIN_DEFAULT_PAYMENT_MEANS_CODE = "1"
 MARMIN_APPROVED_PAYMENT_MEANS_CODES = {"1", "10", "20", "21", "30", "49", "54", "55", "68"}
 
 
-MARMIN_ENDPOINT_SCHEME_ID_UAE = "0235"
+MARMIN_ENDPOINT_SCHEME_ID_UAE = DEFAULT_ENDPOINT_SCHEME
 
 # Purchase debit note (return Purchase Invoice) = Marmin "self-billed credit
 # note". Type code 261 is from Marmin's docs example. The URL path below
@@ -154,18 +116,7 @@ MARMIN_ENDPOINT_SCHEME_ID_UAE = "0235"
 # it against Marmin's docs and change only this line if theirs differs.
 MARMIN_PURCHASE_CREDIT_NOTE_TYPE_CODE = "261"
 MARMIN_PURCHASE_CREDIT_NOTE_PATH = "purchase-credit-notes"
-MARMIN_UOM_TO_UNECE_CODE = {
-    "nos": "EA", "unit": "EA", "each": "EA", "pcs": "EA", "piece": "EA",
-    "kg": "KGM", "kilogram": "KGM",
-    "gram": "GRM", "gm": "GRM",
-    "litre": "LTR", "liter": "LTR", "ltr": "LTR",
-    "meter": "MTR", "metre": "MTR", "mtr": "MTR",
-    "box": "BX",
-    "pair": "PR",
-    "dozen": "DZN",
-    "hour": "HUR",
-    "day": "DAY",
-}
+MARMIN_UOM_TO_UNECE_CODE = UOM_TO_UNECE
 
 
 class MarminAdapter(BaseAdapter):

@@ -32,7 +32,7 @@ def send_invoice_to_provider(doc, method=None):
                 response=frappe.utils.escape_html(pretty_response),
             )
 
-        frappe.msgprint(html, title="Simulated Incoming Invoice", wide=True)
+        frappe.msgprint(html, title="E-Invoice Response", wide=True)
         return status_code, response_data
 
     except Exception as e:

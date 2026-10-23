@@ -15,7 +15,7 @@ frappe.ui.form.on("Sales Invoice", {
                 () => {
 
                     frm.call({
-                        method: "uae_erpgulf.uae_erpgulf.test.generate_and_send_einvoice",
+                        method: "uae_erpgulf.uae_erpgulf.submit_sales.generate_and_send_einvoice",
                         args: {
                             doc: frm.doc
                         },

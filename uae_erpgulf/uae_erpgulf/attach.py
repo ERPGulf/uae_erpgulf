@@ -50,7 +50,7 @@ def get_document_xml(doctype: str, invoice_name: str):
         # document ..." async-delay message) instead of a fixed generic
         # sentence that used to hide it - same reasoning as the
         # send_invoice_to_provider/generate_and_send_einvoice fix in
-        # test.py. Full traceback is still in the Error Log above.
+        # submit_sales.py. Full traceback is still in the Error Log above.
         frappe.throw(_("Failed to fetch document XML: {0}").format(str(e)))
 
 

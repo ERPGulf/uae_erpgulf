@@ -1,7 +1,6 @@
-""" this file contains the functions to send the sales invoice to the provider"""
+"""Sales Invoice submission to the company's ASP (on_submit hook, buttons, bulk)."""
 import frappe
 import json
-import requests
 import time
 from frappe import _
 from uae_erpgulf.uae_erpgulf.provider_settings import get_active_provider_settings

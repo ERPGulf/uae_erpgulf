@@ -43,7 +43,7 @@ extend_listview_event("Sales Invoice", "onload", function (listview) {
             let invoice_names = selected.map(d => d.name);
 
             frappe.call({
-                method: "uae_erpgulf.uae_erpgulf.test.bulk_send_invoices",
+                method: "uae_erpgulf.uae_erpgulf.submit_sales.bulk_send_invoices",
                 args: {
                     invoices: invoice_names
                 },

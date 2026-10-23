@@ -1,7 +1,17 @@
 """this file contains the functions to validations."""
 import frappe
 from frappe import _
+from uae_erpgulf.uae_erpgulf.providers import assert_provider_registered
 
+
+def validate_company_provider(doc, method=None):
+    """Company.validate: the chosen Accredited Service Provider must have an
+    adapter registered in hooks.py. Refuse here, on the Company form,
+    rather than later on Provider Settings or at invoice submit."""
+    provider = doc.get("custom_accredited_service_providers")
+    if provider:
+        assert_provider_registered(provider)
+        
 def validate_accredited_service_provider(doc, method=None):
     """Runs before a Sales/Purchase Invoice is submitted. """
     company_doc = frappe.get_doc("Company", doc.company)
@@ -14,6 +24,9 @@ def validate_accredited_service_provider(doc, method=None):
         frappe.throw(_(
             "Select an Accredited Service Provider on {0} before submitting e-invoices."
         ).format(doc.company))
+
+    # Fail here, with a clear message, rather than deep inside submit.
+    assert_provider_registered(provider)
 
     has_settings = frappe.db.exists(
         "E-Invoice Provider Settings",

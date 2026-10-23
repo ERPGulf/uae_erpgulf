@@ -127,8 +127,18 @@ from frappe.model.document import Document
 
 class EInvoiceProviderSettings(Document):
 	def validate(self):
+		self.check_provider_registered()
 		self.check_duplicate()
 		self.set_webhook_url()
+
+	def check_provider_registered(self):
+		"""A row can only be saved for a provider that has an adapter in
+		hooks.py; otherwise every submit would fail later with a traceback."""
+		if not self.provider:
+			return
+		from uae_erpgulf.uae_erpgulf.providers import assert_provider_registered
+
+		assert_provider_registered(self.provider)
 
 	def check_duplicate(self):
 		"""Blocks a second row for the same company + provider combo -
