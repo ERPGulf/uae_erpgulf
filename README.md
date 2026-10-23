@@ -2,11 +2,11 @@
 
 A Frappe / ERPNext app that submits Sales Invoices and Purchase Invoices to the UAE Federal Tax Authority (FTA) through an Accredited Service Provider (ASP), tracks their reporting status, stores the FTA-returned XML and PDF against the invoice, receives webhooks, and imports incoming supplier invoices.
 
-The UAE model is Peppol-based (the five-corner "DCTCE" model, PINT-AE invoice profile). Every ASP is a Peppol access point with its own API, so the app has one **adapter per ASP** behind a common interface. Switching ASP is a dropdown on Company; nothing else changes.
+The UAE model is Peppol-based (the five-corner "DCTCE" model, PINT-AE invoice profile). Every ASP is a Peppol access point with its own API, so the app has one **adapter per ASP** behind a common interface. The app is ASP-agnostic: switching ASP is a dropdown on Company, and adding a new ASP is a new adapter folder plus one line in `hooks.py`, with no change to the rest of the app. The adapters shipped today are the ones ERPGulf and its clients have gone live with; the list grows as partners contribute.
 
 | | |
 | --- | --- |
-| Supported ASPs | Flick Network L.L.C, Marmin AI Software Design LLC, Suntech Business Solutions DMCC |
+| ASPs | ASP-agnostic. Any FTA-accredited ASP can be added as one folder under `providers/` — see the [Developer Guide](docs/DEVELOPER_GUIDE.md); pull requests for new ASPs are welcome. The current list is `uae_einvoice_providers` in `hooks.py` |
 | Documents | Sales Invoice (tax invoice 380, credit note 381), Purchase Invoice (self-billed 389, self-billed credit note 396), incoming supplier invoices |
 | Frappe / ERPNext | Version 15 and 16 |
 | Licence | MIT (see `license.txt`) |
@@ -28,8 +28,8 @@ Sales / Purchase Invoice  ──submit──▶  validation.py  ──▶  submi
                                             providers/__init__.py: get_adapter(settings)
                                                                      │
                        ┌───────────────────────┬─────────────────────┴──────────────────────┐
-                 FlickAdapter            MarminAdapter                            SuntechAdapter
-                 (flick/)                (marmin/)                                (suntech/)
+                 <Asp1>Adapter           <Asp2>Adapter                            <AspN>Adapter
+                 (providers/asp1/)       (providers/asp2/)                        (providers/aspn/)
                        └───────────────────────┴────────────────────────────────────────────┘
                                                  providers/pint.py  (shared PINT-AE helpers)
                                                  providers/base.py  (BaseAdapter contract)
@@ -126,7 +126,7 @@ pre-commit install          # ruff + ruff-format + prettier, as configured in .p
 pre-commit run --all-files
 ```
 
-Adding an ASP is one new folder under `providers/` plus one line in `hooks.py`; the [Developer Guide](docs/DEVELOPER_GUIDE.md) walks through it with a skeleton adapter. Issues and pull requests on [GitHub](https://github.com/ERPGulf/uae_erpgulf). Security reports to support@erpgulf.com, please not as public issues.
+Adding an ASP is one new folder under `providers/` plus one line in `hooks.py`; the [Developer Guide](docs/DEVELOPER_GUIDE.md) walks through it with a skeleton adapter, and the [Testing Guide](docs/TESTING_GUIDE.md) section 9 is the acceptance checklist. If you are an ASP or a partner integrating one, open a pull request on [GitHub](https://github.com/ERPGulf/uae_erpgulf); we review and merge adapters that pass that checklist on the ASP's sandbox. Security reports to support@erpgulf.com, please not as public issues.
 
 ## Other ERPGulf e-invoicing apps
 
