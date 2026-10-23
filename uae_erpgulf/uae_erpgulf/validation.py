@@ -12,6 +12,29 @@ def validate_company_provider(doc, method=None):
     if provider:
         assert_provider_registered(provider)
         
+def block_cancel_if_reported(doc, method=None):
+    """before_cancel on Sales / Purchase Invoice: an invoice that reached the
+    FTA (or is on its way) cannot be cancelled in ERPNext; the only valid
+    reversal is a credit / debit note that is itself reported."""
+    reporting = (doc.get("custom_reporting_status") or "").strip().lower()
+    einvoice = (doc.get("custom_uae_einvoice_status") or "").strip().lower()
+
+    # Never accepted by the FTA -> safe to cancel
+    if reporting in ("failed", "rejected"):
+        return
+    if einvoice != "success" and reporting not in ("reported", "pending"):
+        return
+
+    frappe.throw(
+        _(
+            "This invoice has already been sent for UAE e-invoicing "
+            "(reporting status: {0}) and cannot be cancelled. "
+            "Create a Credit Note (Return) against it instead."
+        ).format(reporting or "awaiting"),
+        title=_("Cancellation not allowed"),
+    )
+
+
 def validate_accredited_service_provider(doc, method=None):
     """Runs before a Sales/Purchase Invoice is submitted. """
     company_doc = frappe.get_doc("Company", doc.company)

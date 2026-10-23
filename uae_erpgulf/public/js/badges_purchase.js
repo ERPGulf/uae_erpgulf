@@ -1,47 +1,46 @@
-frappe.ui.form.on('Purchase Invoice', {
-
+// FTA status corner ribbon, drawn into the HTML field
+// custom_uae_einvoice_status_notification. A CSS ribbon instead of the old
+// PNGs: identical size and position for every status, right-aligned in its
+// own column and clipped to a fixed box so it never overlaps the sidebar.
+frappe.ui.form.on("Purchase Invoice", {
     refresh(frm) {
-        frm.set_df_property('custom_uae_einvoice_status_notification', 'options', ' ');
-
-        const eInvoiceStatus = frm.doc.custom_uae_einvoice_status || '';
-        const reportingStatus = frm.doc.custom_reporting_status || '';
-
-        let badgeHtml = '';
-
-        // 🔴 FAILED — either submission failed or reporting failed
-        if (
-            eInvoiceStatus.toUpperCase() === 'FAILED' ||
-            reportingStatus.toUpperCase() === 'FAILED'
-        ) {
-            badgeHtml = '<div class="uae-badge-container"><img src="/assets/uae_erpgulf/js/badges/FTA-failed.png" alt="Failed" class="uae-badge" width="170" height="110" style="margin-top: -5px; margin-left: 230px;"></div>';
-        }
-
-        // ⏳ NOT SUBMITTED — initial state
-        else if (eInvoiceStatus.toUpperCase() === 'NOT SUBMITTED') {
-            badgeHtml = '';
-        }
-
-        // ✅ SUCCESS — check reporting status
-        else if (eInvoiceStatus.toUpperCase() === 'SUCCESS') {
-
-            if (reportingStatus.toUpperCase() === 'REPORTED') {
-                badgeHtml = '<div class="uae-badge-container"><img src="/assets/uae_erpgulf/js/badges/FATA-reported.png" alt="Reported" class="uae-badge" width="150" height="150" style="margin-top: -5px; margin-left: 230px;"></div>';
-
-            } else if (reportingStatus.toUpperCase() === 'NOT REPORTED') {
-                badgeHtml = '<div class="uae-badge-container"><img src="/assets/uae_erpgulf/js/badges/FTA-not-reported.png" alt="Not Reported" class="uae-badge" width="150" height="150" style="margin-top: -5px; margin-left: 230px;"></div>';
-
-            } else if (reportingStatus.toUpperCase() === 'PENDING') {
-                badgeHtml = '<div class="uae-badge-container"><img src="/assets/uae_erpgulf/js/badges/FTA-pending.png" alt="Pending" class="uae-badge" width="150" height="150" style="margin-top: -5px; margin-left: 230px;"></div>';
-            }
-        }
-
-        // Set or clear badge
-        if (badgeHtml) {
-            frm.set_df_property('custom_uae_einvoice_status_notification', 'options', badgeHtml);
-        } else {
-            frm.set_df_property('custom_uae_einvoice_status_notification', 'options', ' ');
-        }
-
-        frm.refresh_field('custom_uae_einvoice_status_notification');
-    }
+        uae_erpgulf_render_status_ribbon(frm);
+    },
 });
+
+function uae_erpgulf_render_status_ribbon(frm) {
+    const field = "custom_uae_einvoice_status_notification";
+    const einvoice = (frm.doc.custom_uae_einvoice_status || "").toUpperCase();
+    const reporting = (frm.doc.custom_reporting_status || "").toUpperCase();
+
+    // label, ribbon colour
+    let ribbon = null;
+    if (einvoice === "FAILED" || reporting === "FAILED" || reporting === "REJECTED") {
+        ribbon = [reporting === "REJECTED" ? "FTA Rejected" : "FTA Failed", "#E0232E"];
+    } else if (einvoice === "SUCCESS" && reporting === "REPORTED") {
+        ribbon = ["FTA Reported", "#23B33A"];
+    } else if (einvoice === "SUCCESS" && reporting === "PENDING") {
+        ribbon = ["FTA Pending", "#F29D1C"];
+    } else if (einvoice === "SUCCESS" && reporting === "NOT REPORTED") {
+        ribbon = ["Not Reported", "#8A8F94"];
+    } else if (einvoice === "SUCCESS") {
+        ribbon = ["Sent to ASP", "#2F6FD6"];
+    }
+
+    let html = " ";
+    if (ribbon) {
+        const [label, color] = ribbon;
+        html =
+            '<div style="display:flex;justify-content:flex-end">' +
+            '<div style="position:relative;width:150px;height:150px;overflow:hidden;pointer-events:none">' +
+            // the band
+            '<div style="position:absolute;top:34px;right:-52px;width:230px;transform:rotate(45deg);' +
+            "background:" + color + ";color:#ffffff;font-weight:700;font-size:15px;letter-spacing:0.3px;" +
+            'text-align:center;line-height:34px;box-shadow:0 2px 4px rgba(0,0,0,0.25);">' +
+            frappe.utils.escape_html(label) +
+            "</div>" +
+            "</div></div>";
+    }
+    frm.set_df_property(field, "options", html);
+    frm.refresh_field(field);
+}

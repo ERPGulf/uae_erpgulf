@@ -277,11 +277,13 @@ doc_events = {
     },
     "Sales Invoice": {
         "on_submit": "uae_erpgulf.uae_erpgulf.submit_sales.generate_and_send_einvoice",
-        "before_submit": "uae_erpgulf.uae_erpgulf.validation.validate_accredited_service_provider"
+        "before_submit": "uae_erpgulf.uae_erpgulf.validation.validate_accredited_service_provider",
+        "before_cancel": "uae_erpgulf.uae_erpgulf.validation.block_cancel_if_reported"
     },
     "Purchase Invoice": {
         "on_submit": "uae_erpgulf.uae_erpgulf.send_purchase.generate_and_send_einvoice",
-        "before_submit": "uae_erpgulf.uae_erpgulf.validation.validate_accredited_service_provider"
+        "before_submit": "uae_erpgulf.uae_erpgulf.validation.validate_accredited_service_provider",
+        "before_cancel": "uae_erpgulf.uae_erpgulf.validation.block_cancel_if_reported"
     }
 }
 fixtures = [

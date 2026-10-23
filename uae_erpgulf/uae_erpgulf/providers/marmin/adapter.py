@@ -193,9 +193,33 @@ class MarminAdapter(BaseAdapter):
 
         return access_token
 
-    # ---- not yet backed by a verified docs page ----
     def verify_auth(self):
-        frappe.throw(_("Marmin auth verification isn't implemented yet - no docs page for it."))
+        """Marmin has no dedicated verify endpoint; a successful signed token
+        request is the verification. Always fetches a fresh token so a stale
+        cached one cannot mask bad credentials."""
+        from frappe.utils import now_datetime
+
+        try:
+            token = self._fetch_token()
+        except Exception as e:
+            self.settings.db_set("last_test_status", "Failed")
+            self.settings.db_set("last_test_on", now_datetime())
+            frappe.db.commit()  # nosemgrep: frappe-manual-commit
+            raise e
+
+        self.settings.db_set("last_test_status", "Passed")
+        self.settings.db_set("last_test_on", now_datetime())
+        frappe.db.commit()  # nosemgrep: frappe-manual-commit
+        return {
+            "status": "success",
+            "response": {
+                "message": "Token obtained from Marmin; credentials are valid.",
+                "token_preview": f"{token[:6]}…{token[-4:]}" if token and len(token) > 12 else "ok",
+                "expires_at": str(self.get_token_expiry() or ""),
+            },
+        }
+
+    # ---- not yet backed by a verified docs page ----
 
     def get_participant_details(self):
         """GET /api/business-profiles/{profileId}"""
