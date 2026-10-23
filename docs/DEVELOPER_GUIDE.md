@@ -103,13 +103,13 @@ Adapters can also set class flags that the common code reads: `AUTO_FETCH_DOCUME
 
 ## Adding a new ASP
 
-Adding an ASP takes seven steps, and only steps 2 and 3 are real code. Steps 4 and 5 must use the same provider name, character for character; `validate_accredited_service_provider` and the Provider Settings form both refuse a name that has no entry in `hooks.py`, so a mismatch shows up on the first save rather than at submit time.
+Adding an ASP takes seven steps, and only steps 2 and 3 are real code. The key you register in `hooks.py` (step 4) is the name users will see in the dropdowns; `validate_accredited_service_provider` and the Provider Settings form both refuse a name that has no entry in `hooks.py`, so a mismatch shows up on the first save rather than at submit time.
 
 1. **Read the ASP's API docs.** Note the base URL, auth type, submit endpoint, status values, XML/PDF download and webhook format.
 2. **Create the folder** `providers/<asp>/` with an empty `__init__.py` and an `adapter.py`.
 3. **Write the adapter class.** Subclass `BaseAdapter`, import the code tables and helpers from `providers/pint.py`, and implement the required methods from the table above. Start with auth, then submit, then status. Do not re-declare emirate, VAT, UOM or Peppol-ID logic in the adapter.
 4. **Register it in hooks.py.** Add one line to `uae_einvoice_providers`. The key is the provider name as it will appear in the dropdowns.
-5. **Add the provider option** with exactly that name to the Provider field on E-Invoice Provider Settings and to `custom_accredited_service_providers` on Company (export the Company field to fixtures).
+5. **Run `bench --site <site> migrate`.** `sync_provider_options` (hooked on `after_migrate` and `after_install`) appends the new name to the Provider dropdown on E-Invoice Provider Settings and to *Accredited Service Providers* on Company. Nothing to edit by hand; the existing FTA list is kept.
 6. **Add any ASP-only custom fields** (like `custom_marmin_profile_id`). Use Depends On so they show only for that ASP, and export them to fixtures.
 7. **Test in sandbox.** Save a Provider Settings row (this already checks the registry), run Test Auth, then a sales invoice, credit note, purchase invoice and debit note. Check status, XML/PDF and webhooks. The [Testing Guide](TESTING_GUIDE.md), section 9, is the checklist.
 

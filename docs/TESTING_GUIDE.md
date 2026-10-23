@@ -140,7 +140,7 @@ Run this after a developer has added `providers/<asp>/adapter.py` and the `hooks
 | # | Test | Steps | Expected |
 | --- | --- | --- | --- |
 | 9.1 | Registry | Company: choose the new provider. E-Invoice Provider Settings → New for it → Save | Saves (if it refuses with "No adapter is registered", the `hooks.py` key does not match the dropdown text character for character) |
-| 9.2 | Option present in both lists | Check the Provider dropdown on the settings row and *Accredited Service Providers* on Company | The new name appears, spelled identically, in both |
+| 9.2 | Option added by migrate | After `bench --site <site> migrate`, check the Provider dropdown on the settings row and *Accredited Service Providers* on Company | The new name appears, spelled exactly as the `hooks.py` key, in both; the existing names are still there |
 | 9.3 | Verify Token | 1.9–1.11 | Same behaviour |
 | 9.4 | Unimplemented optional methods | Press every *E-Invoicing* button and *Get Document → XML/PDF* | Either works or shows "… is not supported by <provider>"; never a traceback |
 | 9.5 | Four document types | 3.2, 4.1, 6.1, 6.3 | All four accepted by the ASP sandbox; Document ID stored each time |

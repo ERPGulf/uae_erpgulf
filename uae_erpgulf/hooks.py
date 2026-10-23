@@ -87,6 +87,8 @@ app_license = "mit"
 
 # before_install = "uae_erpgulf.install.before_install"
 # after_install = "uae_erpgulf.install.after_install"
+after_install = "uae_erpgulf.uae_erpgulf.providers.sync_provider_options"
+after_migrate = "uae_erpgulf.uae_erpgulf.providers.sync_provider_options"
 
 # Uninstallation
 # ------------
