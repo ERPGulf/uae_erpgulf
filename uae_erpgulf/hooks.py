@@ -89,6 +89,8 @@ app_license = "mit"
 # after_install = "uae_erpgulf.install.after_install"
 after_install = "uae_erpgulf.uae_erpgulf.providers.sync_provider_options"
 after_migrate = "uae_erpgulf.uae_erpgulf.providers.sync_provider_options"
+after_install = "uae_erpgulf.uae_erpgulf.providers.sync_provider_options"
+after_migrate = "uae_erpgulf.uae_erpgulf.providers.sync_provider_options"
 
 # Uninstallation
 # ------------
@@ -270,6 +272,9 @@ doctype_list_js = {
     "Purchase Invoice": "public/js/bulk_submit_pur.js"
 }
 doc_events = {
+    "Company": {
+        "validate": "uae_erpgulf.uae_erpgulf.validation.validate_company_provider"
+    },
     "Sales Invoice": {
         "on_submit": "uae_erpgulf.uae_erpgulf.submit_sales.generate_and_send_einvoice",
         "before_submit": "uae_erpgulf.uae_erpgulf.validation.validate_accredited_service_provider"

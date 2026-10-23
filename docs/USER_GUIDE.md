@@ -15,7 +15,7 @@ Open **Company** → your company → tab *UAE E-invoicing* (or scroll to the cu
 | Field | Set it to |
 | --- | --- |
 | UAE E-invoice Enabled | Tick. Until this is ticked the app does nothing for this company. |
-| Accredited Service Providers | Your ASP, e.g. *Flick Network L.L.C*. Only providers that have an adapter in the app can be used; the Provider Settings form refuses the rest. |
+| Accredited Service Providers | Your ASP. The dropdown lists every FTA-accredited ASP, but Company only saves with one that has an adapter in the app; the others are refused with a message naming the supported ones. |
 | Allow credit-note without original invoice in the system | Tick only if you issue credit notes against invoices that were never in ERPNext (migration cases). |
 | Tax ID | Your 15-digit TRN. The Peppol ID (first 10 digits) is derived from it. |
 | Address | The company's default address must have *Country* and, for the UAE, *Emirate* filled. |
