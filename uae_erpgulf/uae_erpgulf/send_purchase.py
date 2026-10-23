@@ -59,6 +59,8 @@ def generate_and_send_einvoice(doc: Union[Document, str], method: Optional[str] 
         doc = frappe.get_doc(doc)
     if doc.doctype != "Purchase Invoice":
         return
+    if not frappe.db.get_value("Company", doc.company, "custom_uae_einvoice_enabled"):
+        return  # UAE e-invoicing is switched off for this company
 
     try:
         settings = get_active_provider_settings(doc.company)
