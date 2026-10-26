@@ -1,317 +1,64 @@
-app_name = "uae_erpgulf"
-app_title = "uae_erpgulf"
-app_publisher = "erpgulf.com"
-app_description = "E-Invoicing for UAE by ERPGulf.com"
-app_email = "support@erpgulf.com"
-app_license = "mit"
+(function () {
+	const CREDIT_TEXT = "ERPGulf.com";
+	const CREDIT_URL = "https://erpgulf.com";
+	// ERPGulf brand: maroon → purple, as on erpgulf.com
+	const CREDIT_STYLE =
+		"font-weight:600;text-decoration:none;color:#8b2335;" +
+		"background:linear-gradient(90deg,#a3262a,#5c1a5b);" +
+		"-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;";
 
-# Apps
-# ------------------
+	const src = (document.currentScript && document.currentScript.src) || "";
+	const match = src.match(/\/assets\/([^/]+)\//);
+	if (!match) return;
 
-# required_apps = []
+	// register this app; all ERPGulf apps share one list and one watcher
+	window.erpgulf_credit_apps = window.erpgulf_credit_apps || new Set();
+	window.erpgulf_credit_apps.add(match[1]);
+	if (window.erpgulf_credit_started) return;
+	window.erpgulf_credit_started = true;
 
-# Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "uae_erpgulf",
-# 		"logo": "/assets/uae_erpgulf/logo.png",
-# 		"title": "uae_erpgulf",
-# 		"route": "/uae_erpgulf",
-# 		"has_permission": "uae_erpgulf.api.permission.has_app_permission"
-# 	}
-# ]
+	function make_credit() {
+		const credit = document.createElement("span");
+		credit.className = "erpgulf-credit";
+		credit.innerHTML =
+			` <span class="text-muted">by</span> ` +
+			`<a href="${CREDIT_URL}" target="_blank" rel="noopener noreferrer" style="${CREDIT_STYLE}">${CREDIT_TEXT}</a>`;
+		// clicking the row copies the version; let the link open instead
+		credit.querySelector("a").addEventListener("click", (e) => e.stopPropagation());
+		return credit;
+	}
 
-# Includes in <head>
-# ------------------
+	function add_credits() {
+		const list = document.getElementById("about-app-versions");
+		if (!list) return;
 
-# include js, css files in header of desk.html
-# app_include_css = "/assets/uae_erpgulf/css/uae_erpgulf.css"
-app_include_js = "/assets/uae_erpgulf/js/erpgulf_credits.js"
+		window.erpgulf_credit_apps.forEach((app) => {
+			// Frappe v16 (newer): one row per app, title attribute "<app>: <version>"
+			const row = list.querySelector(`.about-app-row[title^="${app}:"]`);
+			if (row) {
+				const name = row.querySelector(".about-app-name");
+				if (name && !name.querySelector(".erpgulf-credit")) name.appendChild(make_credit());
+				return;
+			}
 
-# include js, css files in header of web template
-# web_include_css = "/assets/uae_erpgulf/css/uae_erpgulf.css"
-# web_include_js = "/assets/uae_erpgulf/js/uae_erpgulf.js"
+			// Frappe v15 / early v16: one line per app, "<b>App Title:</b> vX (branch)"
+			const versions = window.frappe && frappe.versions;
+			const title = versions && versions[app] && versions[app].title;
+			if (!title) return;
+			list.querySelectorAll("p").forEach((p) => {
+				const b = p.querySelector("b");
+				if (b && b.textContent.trim() === `${title}:` && !p.querySelector(".erpgulf-credit")) {
+					p.insertBefore(make_credit(), p.querySelector("br"));
+				}
+			});
+		});
+	}
 
-# include custom scss in every website theme (without file extension ".scss")
-# website_theme_scss = "uae_erpgulf/public/scss/website"
+	function start() {
+		new MutationObserver(add_credits).observe(document.body, { childList: true, subtree: true });
+		add_credits();
+	}
 
-# include js, css files in header of web form
-# webform_include_js = {"doctype": "public/js/doctype.js"}
-# webform_include_css = {"doctype": "public/css/doctype.css"}
-
-# include js in page
-# page_js = {"page" : "public/js/file.js"}
-
-# include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
-# doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
-# doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
-
-# Svg Icons
-# ------------------
-# include app icons in desk
-# app_include_icons = "uae_erpgulf/public/icons.svg"
-
-# Home Pages
-# ----------
-
-# application home page (will override Website Settings)
-# home_page = "login"
-
-# website user home page (by Role)
-# role_home_page = {
-# 	"Role": "home_page"
-# }
-
-# Generators
-# ----------
-
-# automatically create page for each record of this doctype
-# website_generators = ["Web Page"]
-
-# automatically load and sync documents of this doctype from downstream apps
-# importable_doctypes = [doctype_1]
-
-# Jinja
-# ----------
-
-# add methods and filters to jinja environment
-# jinja = {
-# 	"methods": "uae_erpgulf.utils.jinja_methods",
-# 	"filters": "uae_erpgulf.utils.jinja_filters"
-# }
-
-# Installation
-# ------------
-
-# before_install = "uae_erpgulf.install.before_install"
-# after_install = "uae_erpgulf.install.after_install"
-after_install = "uae_erpgulf.uae_erpgulf.providers.sync_provider_options"
-after_migrate = "uae_erpgulf.uae_erpgulf.providers.sync_provider_options"
-after_install = "uae_erpgulf.uae_erpgulf.providers.sync_provider_options"
-after_migrate = "uae_erpgulf.uae_erpgulf.providers.sync_provider_options"
-
-# Uninstallation
-# ------------
-
-# before_uninstall = "uae_erpgulf.uninstall.before_uninstall"
-# after_uninstall = "uae_erpgulf.uninstall.after_uninstall"
-
-# Integration Setup
-# ------------------
-# To set up dependencies/integrations with other apps
-# Name of the app being installed is passed as an argument
-
-# before_app_install = "uae_erpgulf.utils.before_app_install"
-# after_app_install = "uae_erpgulf.utils.after_app_install"
-
-# Integration Cleanup
-# -------------------
-# To clean up dependencies/integrations with other apps
-# Name of the app being uninstalled is passed as an argument
-
-# before_app_uninstall = "uae_erpgulf.utils.before_app_uninstall"
-# after_app_uninstall = "uae_erpgulf.utils.after_app_uninstall"
-
-# Desk Notifications
-# ------------------
-# See frappe.core.notifications.get_notification_config
-
-# notification_config = "uae_erpgulf.notifications.get_notification_config"
-
-# Permissions
-# -----------
-# Permissions evaluated in scripted ways
-
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
-
-# Document Events
-# ---------------
-# Hook on document methods and events
-
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
-
-# Scheduled Tasks
-# ---------------
-
-# scheduler_events = {
-# 	"all": [
-# 		"uae_erpgulf.tasks.all"
-# 	],
-# 	"daily": [
-# 		"uae_erpgulf.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"uae_erpgulf.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"uae_erpgulf.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"uae_erpgulf.tasks.monthly"
-# 	],
-# }
-
-# Testing
-# -------
-
-# before_tests = "uae_erpgulf.install.before_tests"
-
-# Extend DocType Class
-# ------------------------------
-#
-# Specify custom mixins to extend the standard doctype controller.
-# extend_doctype_class = {
-# 	"Task": "uae_erpgulf.custom.task.CustomTaskMixin"
-# }
-
-# Overriding Methods
-# ------------------------------
-#
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "uae_erpgulf.event.get_events"
-# }
-#
-# each overriding function accepts a `data` argument;
-# generated from the base implementation of the doctype dashboard,
-# along with any modifications made in other Frappe apps
-# override_doctype_dashboards = {
-# 	"Task": "uae_erpgulf.task.get_dashboard_data"
-# }
-
-# exempt linked doctypes from being automatically cancelled
-#
-# auto_cancel_exempted_doctypes = ["Auto Repeat"]
-
-# Ignore links to specified DocTypes when deleting documents
-# -----------------------------------------------------------
-
-# ignore_links_on_delete = ["Communication", "ToDo"]
-
-# Request Events
-# ----------------
-# before_request = ["uae_erpgulf.utils.before_request"]
-# after_request = ["uae_erpgulf.utils.after_request"]
-
-# Job Events
-# ----------
-# before_job = ["uae_erpgulf.utils.before_job"]
-# after_job = ["uae_erpgulf.utils.after_job"]
-
-# User Data Protection
-# --------------------
-
-# user_data_fields = [
-# 	{
-# 		"doctype": "{doctype_1}",
-# 		"filter_by": "{filter_by}",
-# 		"redact_fields": ["{field_1}", "{field_2}"],
-# 		"partial": 1,
-# 	},
-# 	{
-# 		"doctype": "{doctype_2}",
-# 		"filter_by": "{filter_by}",
-# 		"partial": 1,
-# 	},
-# 	{
-# 		"doctype": "{doctype_3}",
-# 		"strict": False,
-# 	},
-# 	{
-# 		"doctype": "{doctype_4}"
-# 	}
-# ]
-
-# Authentication and authorization
-# --------------------------------
-
-# auth_hooks = [
-# 	"uae_erpgulf.auth.validate"
-# ]
-
-# Automatically update python controller files with type annotations for this app.
-# export_python_type_annotations = True
-
-# default_log_clearing_doctypes = {
-# 	"Logging DocType Name": 30  # days to retain logs
-# }
-
-# Translation
-# ------------
-# List of apps whose translatable strings should be excluded from this app's translations.
-# ignore_translatable_strings_from = []
-
-doctype_js = {
-    "Sales Invoice":[ "public/js/sales_invoice.js",
-                        "public/js/tooltip.js",
-                        "public/js/badge_sales.js"
-                ],
-    "Purchase Invoice":["public/js/purchase.js",
-                        "public/js/tooltip_pos.js",
-                        "public/js/badges_purchase.js"
-                ],
-    "E-Invoice Provider Settings": "public/js/e_invoice_provider_settings.js",
-    "Supplier": "public/js/marmin_party.js"
-    
-}
-doctype_list_js = {
-    "Sales Invoice": "public/js/bulk_submit.js",         
-    "Purchase Invoice": "public/js/bulk_submit_pur.js"
-}
-doc_events = {
-    "Company": {
-        "validate": "uae_erpgulf.uae_erpgulf.validation.validate_company_provider"
-    },
-    "Sales Invoice": {
-        "on_submit": "uae_erpgulf.uae_erpgulf.submit_sales.generate_and_send_einvoice",
-        "before_submit": "uae_erpgulf.uae_erpgulf.validation.validate_accredited_service_provider",
-        "before_cancel": "uae_erpgulf.uae_erpgulf.validation.block_cancel_if_reported"
-    },
-    "Purchase Invoice": {
-        "on_submit": "uae_erpgulf.uae_erpgulf.send_purchase.generate_and_send_einvoice",
-        "before_submit": "uae_erpgulf.uae_erpgulf.validation.validate_accredited_service_provider",
-        "before_cancel": "uae_erpgulf.uae_erpgulf.validation.block_cancel_if_reported"
-    }
-}
-fixtures = [
-    {
-        "dt": "Custom Field",
-        "filters": [
-            ["module", "=", "uae_erpgulf"]
-        ]
-    }
-]
-scheduler_events = {
-    "cron": {
-        "* * * * *": [
-            "uae_erpgulf.uae_erpgulf.webhook.update_webhook_logs"
-        ],
-        "*/5 * * * *": [
-            "uae_erpgulf.uae_erpgulf.status_sync.sync_pending_invoices"
-        ]
-    }
-}
-
-
-uae_einvoice_providers = {
-    "Flick Network L.L.C": "uae_erpgulf.uae_erpgulf.providers.flick.adapter.FlickAdapter",
-    "Marmin AI Software Design LLC": "uae_erpgulf.uae_erpgulf.providers.marmin.adapter.MarminAdapter",
-    "Suntech Business Solutions DMCC": "uae_erpgulf.uae_erpgulf.providers.suntech.adapter.SuntechAdapter",
-    # "Fynamics Techno Solutions FZCO": "uae_erpgulf.uae_erpgulf.providers.fynamics.adapter.FynamicsAdapter",
-}
-
-
-import uae_erpgulf.overrides.return_validation
+	if (document.body) start();
+	else document.addEventListener("DOMContentLoaded", start);
+})();
