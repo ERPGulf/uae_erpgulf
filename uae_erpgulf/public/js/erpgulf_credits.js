@@ -1,7 +1,7 @@
 (function () {
     const CREDIT_TEXT = "ERPGulf.com";
     const CREDIT_URL = "https://erpgulf.com";
-    // ERPGulf brand: maroon → purple, as on erpgulf.com
+    // ERPGulf brand colours: maroon to purple, as on erpgulf.com
     const CREDIT_STYLE =
         "font-weight:600;text-decoration:none;color:#8b2335;" +
         "background:linear-gradient(90deg,#a3262a,#5c1a5b);" +
@@ -21,7 +21,7 @@
         const credit = document.createElement("span");
         credit.className = "erpgulf-credit";
         credit.innerHTML =
-            ` <span class="text-muted">from</span> ` +
+            ` <span class="text-muted">by</span> ` +
             `<a href="${CREDIT_URL}" target="_blank" rel="noopener noreferrer" style="${CREDIT_STYLE}">${CREDIT_TEXT}</a>`;
         // clicking the row copies the version; let the link open instead
         credit.querySelector("a").addEventListener("click", (e) => e.stopPropagation());
