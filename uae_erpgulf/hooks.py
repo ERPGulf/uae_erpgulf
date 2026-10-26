@@ -26,7 +26,7 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/uae_erpgulf/css/uae_erpgulf.css"
-# app_include_js = "/assets/uae_erpgulf/js/uae_erpgulf.js"
+app_include_js = "/assets/uae_erpgulf/js/erpgulf_credits.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/uae_erpgulf/css/uae_erpgulf.css"
