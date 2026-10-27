@@ -1,3 +1,27 @@
+> ## ⚠️ This app has been superseded by [einvoice_erpgulf](https://github.com/ERPGulf/einvoice_erpgulf)
+>
+> Most UAE companies do business internationally, so their ERPNext instances usually cover more than one country, Oman in particular. Many users asked us to accommodate this, so we have released a new app, **[einvoice_erpgulf](https://github.com/ERPGulf/einvoice_erpgulf)**, that handles multiple countries and providers in one install. Please install it instead of this one. This repository will be archived soon.
+>
+> **New installations:** `bench get-app https://github.com/ERPGulf/einvoice_erpgulf.git` — installing `uae_erpgulf` on a new site is refused with this same message.
+>
+> **Existing sites:** your data, ASP credentials and invoices carry over. Install `einvoice_erpgulf` on the site, then uninstall `uae_erpgulf`:
+>
+> ```bash
+> cd frappe-bench
+> bench --site <site> backup --with-files
+> bench get-app https://github.com/ERPGulf/einvoice_erpgulf.git
+> bench --site <site> install-app einvoice_erpgulf     # migrates the UAE doctypes and fields in place
+> bench --site <site> uninstall-app uae_erpgulf --no-backup --force
+> bench build --app einvoice_erpgulf
+> bench --site <site> migrate
+> ```
+>
+> On Frappe Cloud: Bench → Apps → add `einvoice_erpgulf` → Deploy; Site → Apps → Install `einvoice_erpgulf`; Site → Apps → Uninstall `uae_erpgulf`. Take a backup from the dashboard first.
+>
+> Full details, including the list of renamed doctypes and fields: [Migrating from uae_erpgulf](https://github.com/ERPGulf/einvoice_erpgulf#migrating-from-uae_erpgulf).
+
+---
+
 # UAE E-Invoicing for ERPNext (uae_erpgulf)
 
 A Frappe / ERPNext app that submits Sales Invoices and Purchase Invoices to the UAE Federal Tax Authority (FTA) through an Accredited Service Provider (ASP), tracks their reporting status, stores the FTA-returned XML and PDF against the invoice, receives webhooks, and imports incoming supplier invoices.
